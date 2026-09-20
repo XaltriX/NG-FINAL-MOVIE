@@ -1,0 +1,267 @@
+#Thanks [@Tokyo_Updates] for helping in this journey 
+import math
+import asyncio
+import logging
+from info import *
+from typing import Dict, Union
+from dreamxbotz.Bot import work_loads
+from pyrogram import Client, utils, raw
+from .file_properties import get_file_ids
+from pyrogram.session import Session, Auth
+from pyrogram.errors import AuthBytesInvalid, Timeout as PyrogramTimeout, ServiceUnavailable
+from dreamxbotz.server.exceptions import FIleNotFound
+from pyrogram.file_id import FileId, FileType, ThumbnailSource
+
+
+class ByteStreamer:
+    def __init__(self, client: Client):
+        """A custom class that holds the cache of a specific client and class functions.
+        attributes:
+            client: the client that the cache is for.
+            cached_file_ids: a dict of cached file IDs.
+            cached_file_properties: a dict of cached file properties.
+        
+        functions:
+            generate_file_properties: returns the properties for a media of a specific message contained in Tuple.
+            generate_media_session: returns the media session for the DC that contains the media file.
+            yield_file: yield a file from telegram servers for streaming.
+            
+        This is a modified version of the <https://github.com/eyaadh/megadlbot_oss/blob/master/mega/telegram/utils/custom_download.py>
+        Thanks to Eyaadh <https://github.com/eyaadh>
+        """
+        self.clean_timer = 30 * 60
+        self.client: Client = client
+        self.cached_file_ids: Dict[int, FileId] = {}
+        asyncio.create_task(self.clean_cache())
+
+    async def get_file_properties(self, id: int) -> FileId:
+        """
+        Returns the properties of a media of a specific message in a FIleId class.
+        if the properties are cached, then it'll return the cached results.
+        or it'll generate the properties from the Message ID and cache them.
+        """
+        if id not in self.cached_file_ids:
+            await self.generate_file_properties(id)
+            logging.debug(f"Cached file properties for message with ID {id}")
+        return self.cached_file_ids[id]
+
+    async def generate_file_properties(self, id: int) -> FileId:
+        """
+        Generates the properties of a media file on a specific message.
+        returns ths properties in a FIleId class.
+        """
+        file_id = await get_file_ids(self.client, BIN_CHANNEL, id, prefer_db_name=True)
+        logging.debug(f"Generated file ID and Unique ID for message with ID {id}")
+        if not file_id:
+            logging.debug(f"Message with ID {id} not found")
+            raise FIleNotFound
+        self.cached_file_ids[id] = file_id
+        logging.debug(f"Cached media message with ID {id}")
+        return self.cached_file_ids[id]
+
+    async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
+        """
+        Generates the media session for the DC that contains the media file.
+        This is required for getting the bytes from Telegram servers.
+        """
+
+        media_session = client.media_sessions.get(file_id.dc_id, None)
+
+        if media_session is None:
+            if file_id.dc_id != await client.storage.dc_id():
+                media_session = Session(
+                    client,
+                    file_id.dc_id,
+                    await Auth(
+                        client, file_id.dc_id, await client.storage.test_mode()
+                    ).create(),
+                    await client.storage.test_mode(),
+                    is_media=True,
+                )
+                await media_session.start()
+
+                for _ in range(6):
+                    exported_auth = await client.invoke(
+                        raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
+                    )
+
+                    try:
+                        await media_session.send(
+                            raw.functions.auth.ImportAuthorization(
+                                id=exported_auth.id, bytes=exported_auth.bytes
+                            )
+                        )
+                        break
+                    except AuthBytesInvalid:
+                        logging.debug(
+                            f"Invalid authorization bytes for DC {file_id.dc_id}"
+                        )
+                        continue
+                else:
+                    await media_session.stop()
+                    raise AuthBytesInvalid
+            else:
+                media_session = Session(
+                    client,
+                    file_id.dc_id,
+                    await client.storage.auth_key(),
+                    await client.storage.test_mode(),
+                    is_media=True,
+                )
+                await media_session.start()
+            logging.debug(f"Created media session for DC {file_id.dc_id}")
+            client.media_sessions[file_id.dc_id] = media_session
+        else:
+            logging.debug(f"Using cached media session for DC {file_id.dc_id}")
+        return media_session
+
+    async def reset_media_session(self, client: Client, file_id: FileId) -> Session:
+        """
+        Drops the cached (possibly stale/dead) media session for this DC and
+        creates a fresh one. Used when Telegram keeps returning Timeout /
+        ServiceUnavailable on upload.GetFile for an otherwise-valid session.
+        """
+        old_session = client.media_sessions.pop(file_id.dc_id, None)
+        if old_session is not None:
+            try:
+                await old_session.stop()
+            except Exception:
+                logging.debug(f"Ignoring error while stopping stale session for DC {file_id.dc_id}")
+        return await self.generate_media_session(client, file_id)
+
+    @staticmethod
+    async def get_location(file_id: FileId) -> Union[raw.types.InputPhotoFileLocation,
+                                                     raw.types.InputDocumentFileLocation,
+                                                     raw.types.InputPeerPhotoFileLocation,]:
+        """
+        Returns the file location for the media file.
+        """
+        file_type = file_id.file_type
+
+        if file_type == FileType.CHAT_PHOTO:
+            if file_id.chat_id > 0:
+                peer = raw.types.InputPeerUser(
+                    user_id=file_id.chat_id, access_hash=file_id.chat_access_hash
+                )
+            else:
+                if file_id.chat_access_hash == 0:
+                    peer = raw.types.InputPeerChat(chat_id=-file_id.chat_id)
+                else:
+                    peer = raw.types.InputPeerChannel(
+                        channel_id=utils.get_channel_id(file_id.chat_id),
+                        access_hash=file_id.chat_access_hash,
+                    )
+
+            location = raw.types.InputPeerPhotoFileLocation(
+                peer=peer,
+                volume_id=file_id.volume_id,
+                local_id=file_id.local_id,
+                big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
+            )
+        elif file_type == FileType.PHOTO:
+            location = raw.types.InputPhotoFileLocation(
+                id=file_id.media_id,
+                access_hash=file_id.access_hash,
+                file_reference=file_id.file_reference,
+                thumb_size=file_id.thumbnail_size,
+            )
+        else:
+            location = raw.types.InputDocumentFileLocation(
+                id=file_id.media_id,
+                access_hash=file_id.access_hash,
+                file_reference=file_id.file_reference,
+                thumb_size=file_id.thumbnail_size,
+            )
+        return location
+
+    async def yield_file(
+        self,
+        file_id: FileId,
+        index: int,
+        offset: int,
+        first_part_cut: int,
+        last_part_cut: int,
+        part_count: int,
+        chunk_size: int,
+    ) -> Union[str, None]:
+        """
+        Custom generator that yields the bytes of the media file.
+        """
+        client = self.client
+        work_loads[index] += 1
+        logging.debug(f"Starting to yielding file with client {index}.")
+        media_session = await self.generate_media_session(client, file_id)
+
+        current_part = 1
+        location = await self.get_location(file_id)
+
+        async def get_file_with_retry(current_offset: int, max_retries: int = 3):
+            """
+            Wraps upload.GetFile with retries. If Telegram keeps timing out,
+            the cached media session is dropped and rebuilt, since a repeated
+            -503 Timeout often means the session itself has gone stale.
+            """
+            nonlocal media_session
+            last_exc = None
+            for attempt in range(max_retries):
+                try:
+                    return await media_session.send(
+                        raw.functions.upload.GetFile(
+                            location=location, offset=current_offset, limit=chunk_size
+                        ),
+                    )
+                except (PyrogramTimeout, ServiceUnavailable) as e:
+                    last_exc = e
+                    logging.warning(
+                        f"GetFile timeout at offset {current_offset}, "
+                        f"attempt {attempt + 1}/{max_retries}: {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        media_session = await self.reset_media_session(client, file_id)
+                        await asyncio.sleep(0)
+            raise last_exc
+
+        try:
+            r = await get_file_with_retry(offset)
+            if isinstance(r, raw.types.upload.File):
+                while True:
+                    chunk = r.bytes
+                    if not chunk:
+                        break
+                    elif part_count == 1:
+                        yield chunk[first_part_cut:last_part_cut]
+                    elif current_part == 1:
+                        yield chunk[first_part_cut:]
+                    elif current_part == part_count:
+                        yield chunk[:last_part_cut]
+                    else:
+                        yield chunk
+
+                    current_part += 1
+                    offset += chunk_size
+
+                    if current_part > part_count:
+                        break
+
+                    r = await get_file_with_retry(offset)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Never silently return a partial file: the HTTP layer already sent
+            # Content-Length, so swallowing Telegram errors makes the browser
+            # wait/fail as if the stream is frozen.
+            logging.exception("Telegram GetFile failed at offset %s", offset)
+            raise
+        finally:
+            logging.debug("Finished yielding file with %s parts.", current_part - 1)
+            work_loads[index] = max(0, work_loads[index] - 1)
+
+
+    async def clean_cache(self) -> None:
+        """
+        function to clean the cache to reduce memory usage
+        """
+        while True:
+            await asyncio.sleep(self.clean_timer)
+            self.cached_file_ids.clear()
+            logging.debug("Cleaned the cache")

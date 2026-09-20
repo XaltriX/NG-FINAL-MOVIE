@@ -1,0 +1,37 @@
+pyrofork==2.3.69
+tgcrypto-pyrofork
+pymongo==4.13.2
+motor==3.7.1
+marshmallow<4.0.0
+umongo
+requests
+bs4
+shortzy
+pytz
+aiohttp
+telegraph
+pymediainfo-pyrofork
+
+# Other tools
+python-dotenv==0.21.1
+PyLeaves==1.0.2
+humanize
+Pillow
+psutil
+ujson
+wget
+aiofiles
+dnspython==2.7.0
+python-decouple
+ffmpeg-python==0.2.0
+jinja2
+apscheduler
+pyshorteners
+colorama
+rapidfuzz
+fuzzywuzzy
+python-Levenshtein
+
+# Git-based Packages
+git+https://github.com/DreamXBotz/IMDBKit.git@main
+git+https://github.com/DreamXBotz/cinemagoer
