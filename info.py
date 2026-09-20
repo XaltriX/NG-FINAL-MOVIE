@@ -222,38 +222,58 @@ BAD_WORDS = {
     "@", "www.", "ClipmateZone", "NewMoviesOnTG", "moviehub4u update",   "New", "Movies", "OnTG", "movie4u", "RunningMoviesHD", "@TGCinemaworld -"
 } # Set of bad words to filter out
    
-
+   
 # ============================
 # Server & Web Configuration
 # ============================
 
-
 NO_PORT = bool(environ.get('NO_PORT', False))
-APP_NAME = None
-if 'DYNO' in environ:
-    ON_HEROKU = True
-    APP_NAME = environ.get('APP_NAME')
+
+# ============================
+# Heroku Detection (FIXED)
+# ============================
+ON_HEROKU = 'DYNO' in environ
+
+# APP_NAME must NEVER be None
+APP_NAME = environ.get(
+    'APP_NAME',
+    'movie-master-bot2-5f47bbd93d38'   # fallback Heroku app name
+)
+
+BIND_ADRESS = getenv('WEB_SERVER_BIND_ADDRESS', '0.0.0.0')
+
+# ============================
+# FQDN (CRASH SAFE)
+# ============================
+if getenv('FQDN'):
+    FQDN = getenv('FQDN')
+elif ON_HEROKU:
+    FQDN = f"{APP_NAME}.herokuapp.com"
 else:
-    ON_HEROKU = False
-BIND_ADRESS = str(getenv('WEB_SERVER_BIND_ADDRESS', '0.0.0.0'))
-FQDN = str(getenv('FQDN', BIND_ADRESS)) if not ON_HEROKU or getenv('FQDN') else APP_NAME+'.herokuapp.com'
-URL = "https://{}/".format(FQDN) if ON_HEROKU or NO_PORT else "https://{}/".format(FQDN, PORT)
+    FQDN = BIND_ADRESS
+
+# ============================
+# URL (HEROKU + VPS SAFE)
+# ============================
+PORT = int(environ.get("PORT", "8080"))
+HAS_SSL = bool(getenv('HAS_SSL', True))
+
+if ON_HEROKU or NO_PORT:
+    URL = f"https://{FQDN}/"
+else:
+    URL = f"http://{FQDN}:{PORT}/"
+
+# ============================
+# Other Settings
+# ============================
 SLEEP_THRESHOLD = int(environ.get('SLEEP_THRESHOLD', '60'))
 WORKERS = int(environ.get('WORKERS', '4'))
 SESSION_NAME = str(environ.get('SESSION_NAME', 'dreamXBotz'))
 MULTI_CLIENT = False
 name = str(environ.get('name', 'DREAMXBOTZ'))
 PING_INTERVAL = int(environ.get("PING_INTERVAL", "1200"))  # 20 minutes
-if 'DYNO' in environ:
-    ON_HEROKU = True
-    APP_NAME = str(getenv('APP_NAME'))
-else:
-    ON_HEROKU = False
-HAS_SSL = bool(getenv('HAS_SSL', True))
-if HAS_SSL:
-    URL = "https://{}/".format(FQDN)
-else:
-    URL = "http://{}/".format(FQDN)
+
+
 
 
 # ============================
