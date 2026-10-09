@@ -30,7 +30,7 @@ USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))  # Use captio
 INDEX_CAPTION = bool(environ.get('SAVE_CAPTION', True)) # Save caption db when idexing make it False if you dont use USE_CAPTION_FILTER for search results (default: True)
 #Making it false will not save caption in db SO you can save some storage space
 COVERX = bool(environ.get('COVERX', True)) # Use cover image for indexed files (default: True)
-COVER_WATERMARK = bool(environ.get('COVER_WATERMARK', True)) # Watermark [@Tokyo_Updates] cover pe lagao (default: True)
+COVER_WATERMARK = bool(environ.get('COVER_WATERMARK', True)) # Watermark cover pe lagao (default: True)
 # If you disable it then bot will use a default thumb for all files
 
 
@@ -112,29 +112,9 @@ TMDB_API_KEY = "a02fd334c1aad2e413e6f57a0be2ef27"
 POSTER_SPOILER= bool(environ.get('POSTER_SPOILER', True))  # On (True) / Off (False)
 
 # ============================
-# Verification Settings
+# Admin log channel
 # ============================
-IS_VERIFY = is_enabled('IS_VERIFY', "False")  # Verification On (True) / Off (False)
-LOG_VR_CHANNEL = int(environ.get('LOG_VR_CHANNEL', '-100')) #Verification Channel Id 
-LOG_API_CHANNEL = int(environ.get('LOG_API_CHANNEL', '-100')) #If Anyone Set Your Bot In Any Group And Set Shortner In That Group Then In This Channel The All Details Come
-VERIFY_IMG = environ.get("VERIFY_IMG", "https://telegra.ph/file/9ecc5d6e4df5b83424896.jpg")
-
-TUTORIAL = environ.get("TUTORIAL", "")   # Tutorial link for verification
-TUTORIAL_2 = environ.get("TUTORIAL_2", "")   # Second tutorial link for verification
-TUTORIAL_3 = environ.get("TUTORIAL_3", "")   # Third tutorial link for verification
-
-# Verification (Must Fill All Veriables. Else You Got Error
-SHORTENER_API = environ.get("SHORTENER_API", "") # Shortener API key
-SHORTENER_WEBSITE = environ.get("SHORTENER_WEBSITE", "") # Shortener website
-
-SHORTENER_API2 = environ.get("SHORTENER_API2", "")  # Shortener API key for second website
-SHORTENER_WEBSITE2 = environ.get("SHORTENER_WEBSITE2", "") # Shortener website for second website
-
-SHORTENER_API3 = environ.get("SHORTENER_API3", "")  
-SHORTENER_WEBSITE3 = environ.get("SHORTENER_WEBSITE3", "") # Shortener website for third website
-
-TWO_VERIFY_GAP = int(environ.get('TWO_VERIFY_GAP', "1800")) # Time gap for two-step verification in seconds (default: 20 minutes)
-THREE_VERIFY_GAP = int(environ.get('THREE_VERIFY_GAP', "54000"))    
+LOG_API_CHANNEL = int(environ.get('LOG_API_CHANNEL', '-100'))  # Group settings change logs
 
 # ============================
 # Channel & Group Links Configuration
@@ -162,7 +142,7 @@ MAX_B_TN = environ.get("MAX_B_TN", "10") # Maximum number of buttons in a row (d
 PORT = environ.get("PORT", "8080")  # Port for the web server (default: 8080)
 MSG_ALRT = environ.get('MSG_ALRT', 'Share & Support Us ♥️') # Alert message for users
 DELETE_TIME = int(environ.get("DELETE_TIME", "120"))  #  deletion time in seconds (default: 5 minutes). Adjust as per your needs.
-CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", f"{script.CAPTION}")   # Custom caption for files
+CUSTOM_FILE_CAPTION = script.CAPTION   # ALWAYS from Script.py (env var / per-group caption ignored on purpose)
 BATCH_FILE_CAPTION = environ.get("BATCH_FILE_CAPTION", CUSTOM_FILE_CAPTION) # Custom caption for batch files
 IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", f"{script.IMDB_TEMPLATE_TXT}")     # Custom IMDB template 
 MAX_LIST_ELM = environ.get("MAX_LIST_ELM", None) # Maximum number of elements in a list (default: None, no limit)
@@ -178,12 +158,15 @@ AUTO_DELETE = is_enabled((environ.get('AUTO_DELETE', "True")), True) # Auto Dele
 LONG_IMDB_DESCRIPTION = is_enabled(environ.get("LONG_IMDB_DESCRIPTION", "False"), False) # Long IMDB Description On (True) / Off (False)
 SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True) # Spell Check Mode On (True) / Off (False)
 MELCOW_NEW_USERS = is_enabled((environ.get('MELCOW_NEW_USERS', "False")), False) # Melcow New Users On (True) / Off (False)
-PROTECT_CONTENT = is_enabled((environ.get('PROTECT_CONTENT', "False")), False) # Protect Content On (True) / Off (False)
+# Start value only: the real switch is /admin -> Forward (saved in DB, overrides all groups' old file_secure).
+FORWARD_ALLOWED = is_enabled(environ.get('FORWARD_ALLOWED', "True"), True)
+
+# Branding: old names found in file name / caption / template are replaced by NEW_BRAND
+NEW_BRAND = environ.get('NEW_BRAND', 'NeonGhost_Network')
+OLD_BRAND_NAMES = [n for n in environ.get('OLD_BRAND_NAMES', 'AJK_BOY_OFFICAL AJK_BOY_OFFICIAL Tokyo_Updates').split() if n]
 PM_SEARCH = bool(environ.get('PM_SEARCH', True))  # PM Search On (True) / Off (False)
 EMOJI_MODE = bool(environ.get('EMOJI_MODE', False))  # Emoji status On (True) / Off (False)
 BUTTON_MODE = is_enabled((environ.get('BUTTON_MODE', "False")), False) # pm & Group button or link mode (True) / Off (False)
-STREAM_MODE = bool(environ.get('STREAM_MODE', False)) # Set Stream mode True or False
-PREMIUM_STREAM_MODE = bool(environ.get('PREMIUM_STREAM_MODE', False)) # Set Stream mode True or False only for premium users
 
 
 # ============================
@@ -269,8 +252,6 @@ else:
 SLEEP_THRESHOLD = int(environ.get('SLEEP_THRESHOLD', '60'))
 WORKERS = int(environ.get('WORKERS', '4'))
 SESSION_NAME = str(environ.get('SESSION_NAME', 'dreamXBotz'))
-MULTI_CLIENT = False
-name = str(environ.get('name', 'DREAMXBOTZ'))
 PING_INTERVAL = int(environ.get("PING_INTERVAL", "1200"))  # 20 minutes
 
 
@@ -290,16 +271,12 @@ REACTIONS = ["🤝", "😇", "🤗", "😍", "👍", "🎅", "😐", "🥰", "�
 USER_COMMANDS = {
 
     "start": "ᴛᴏ ᴜꜱᴇ ᴍʏ ꜰᴇᴀᴛᴜʀᴇꜱ.", 
-    "alive": "ᴄʜᴇᴄᴋ ʙᴏᴛ ᴀʟɪᴠᴇ ᴏʀ ɴᴏᴛ.",
     "trendlist": "ɢᴇᴛ ᴛᴏᴘ ᴛʀᴇɴᴅɪɴɢ ꜱᴇᴀʀᴄʜ ʟɪꜱᴛ.",
     "top_search": "ᴛᴏᴘ ꜱᴇᴀʀᴄʜᴇꜱ ᴏꜰ ᴛʜᴇ ᴅᴀʏ.",
     "myplan": "ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ.",
     "plan": "ᴠɪᴇᴡ ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴꜱ.",
-    "redeem": "ʀᴇᴅᴇᴇᴍ ᴀ ᴘʀᴇᴍɪᴜᴍ ᴄᴏᴅᴇ. 🎁",
     "add_premium": "ᴀᴅᴅ ᴀɴʏ ᴜꜱᴇʀ ᴛᴏ ᴘʀᴇᴍɪᴜᴍ.",
     "remove_premium": "ʀᴇᴍᴏᴠᴇ ᴀɴʏ ᴜꜱᴇʀ ꜰʀᴏᴍ ᴘʀᴇᴍɪᴜᴍ.",
-    "stickerid": "ɢᴇᴛ ᴀ ꜱᴛɪᴄᴋᴇʀ'ꜱ ɪᴅ.",
-    "font": "ᴄᴏɴᴠᴇʀᴛ ᴛᴇxᴛ ᴛᴏ ꜱᴛʏʟɪꜱʜ ꜰᴏɴᴛ.",
     "id": "ɢᴇᴛ ᴛᴇʟᴇɢʀᴀᴍ ɪᴅ.",
     "info": "ɢᴇᴛ ᴜꜱᴇʀ ɪɴꜰᴏ.",
     
@@ -309,19 +286,9 @@ USER_COMMANDS = {
     "reload": "ʟɪɴᴋ / ʀᴇʟᴏᴀᴅ ᴛʜɪꜱ ɢʀᴏᴜᴘ ᴛᴏ ᴍᴀɴᴀɢᴇ ꜰʀᴏᴍ ᴘᴍ.",
     "settings": "ᴄʜᴀɴɢᴇ ᴛʜᴇ ɢʀᴏᴜᴘ ꜱᴇᴛᴛɪɴɢꜱ ᴀꜱ ʏᴏᴜʀ ᴡɪꜱʜ.",
     "details": "ᴄʜᴇᴄᴋ ʏᴏᴜʀ ꜱᴇᴛᴛɪɴɢꜱ.",
-    "set_caption": "ꜱᴇᴛ ᴀ ᴄᴜꜱᴛᴏᴍ ꜰɪʟᴇ ᴄᴀᴘᴛɪᴏɴ ᴛᴇᴍᴘʟᴀᴛᴇ.",
     "set_template": "ꜱᴇᴛ ᴀ ᴄᴜꜱᴛᴏᴍ ɪᴍᴅʙ ᴛᴇᴍᴘʟᴀᴛᴇ.",
     "set_fsub": "ꜱᴇᴛ ᴄᴜꜱᴛᴏᴍ ꜰᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.",
     "remove_fsub": "ʀᴇᴍᴏᴠᴇ ᴄᴜꜱᴛᴏᴍ ꜰᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.",
-    "set_shortner": "ꜱᴇᴛ ʏᴏᴜʀ 1ꜱᴛ ꜱʜᴏʀᴛɴᴇʀ.",
-    "set_shortner_2": "ꜱᴇᴛ ʏᴏᴜʀ 2ɴᴅ ꜱʜᴏʀᴛɴᴇʀ.",
-    "set_shortner_3": "ꜱᴇᴛ ʏᴏᴜʀ 3ʀᴅ ꜱʜᴏʀᴛɴᴇʀ.",
-    "set_tutorial": "ꜱᴇᴛ ʏᴏᴜʀ 1ꜱᴛ ᴛᴜᴛᴏʀɪᴀʟ ᴠɪᴅᴇᴏ.",
-    "set_tutorial_2": "ꜱᴇᴛ ʏᴏᴜʀ 2ɴᴅ ᴛᴜᴛᴏʀɪᴀʟ ᴠɪᴅᴇᴏ.",
-    "set_tutorial_3": "ꜱᴇᴛ ʏᴏᴜʀ 3ʀᴅ ᴛᴜᴛᴏʀɪᴀʟ ᴠɪᴅᴇᴏ.",
-    "set_time": "ꜱᴇᴛ 1ꜱᴛ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ɢᴀᴘ.",
-    "set_time_2": "ꜱᴇᴛ 2ɴᴅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ɢᴀᴘ.",
-    "set_log_channel": "ꜱᴇᴛ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʟᴏɢ ᴄʜᴀɴɴᴇʟ.",
 }
 
 
@@ -331,10 +298,8 @@ USER_COMMANDS = {
 
 OWNER_COMMANDS = {
 
-    "ping": "ᴄʜᴇᴄᴋ ʙᴏᴛ ʀᴇꜱᴘᴏɴꜱᴇ ᴛɪᴍᴇ.",
-    "system": "ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱʏꜱᴛᴇᴍ ɪɴꜰᴏ.",
+    "admin": "ᴏᴘᴇɴ ᴀᴅᴍɪɴ ᴘᴀɴᴇʟ (ᴀʟʟ ᴛᴏɢɢʟᴇꜱ).",
     "stats": "ɢᴇᴛ ᴛʜᴇ ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ ᴀɴᴅ ᴄʜᴀᴛꜱ.",
-    "verify": "ᴛᴜʀɴ ᴏɴ / ᴏꜰꜰ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ (ᴏɴʟʏ ᴡᴏʀᴋ ɪɴ ɢʀᴏᴜᴘ).",
     "logs": "ɢᴇᴛ ᴛʜᴇ ʀᴇᴄᴇɴᴛ ᴇʀʀᴏʀꜱ. 📜",
     "send": "ꜱᴇɴᴅ ᴍᴇꜱꜱᴀɢᴇ ᴛᴏ ᴀ ᴘᴀʀᴛɪᴄᴜʟᴀʀ ᴜꜱᴇʀ.",
     "users": "ɢᴇᴛ ʟɪꜱᴛ ᴏꜰ ᴍʏ ᴜꜱᴇʀꜱ ᴀɴᴅ ɪᴅꜱ.",
@@ -355,33 +320,20 @@ OWNER_COMMANDS = {
     "del_grp_broadcast": "ᴅᴇʟᴇᴛᴇ ᴀʟʟ ᴘʀᴇᴠɪᴏᴜꜱ ɢʀᴏᴜᴘ ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴍᴇꜱꜱᴀɢᴇꜱ.",
     
     "setskip": "ꜱᴇᴛ ꜰɪʟᴇ ɪɴᴅᴇxɪɴɢ ꜱᴋɪᴘ ɴᴜᴍʙᴇʀ.",
-    "rename_db": "ʀᴇɴᴀᴍᴇ / ᴄʟᴇᴀɴ ꜰɪʟᴇ ɴᴀᴍᴇꜱ ɪɴ ᴅᴀᴛᴀʙᴀꜱᴇ.",
     "cleandb": "ᴄʟᴇᴀɴ ᴜɴɴᴇᴄᴇꜱꜱᴀʀʏ ꜰɪᴇʟᴅꜱ ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀꜱᴇ.",
-    "fix_media_speed": "ᴄʟᴀꜱꜱɪꜰʏ ᴏʟᴅ ꜰɪʟᴇꜱ ꜰᴏʀ ꜰᴀꜱᴛᴇʀ ᴍᴏᴠɪᴇ/ꜱᴇʀɪᴇꜱ ꜰɪʟᴛᴇʀɪɴɢ.",
     "delete": "ᴅᴇʟᴇᴛᴇ ᴀ ꜱᴘᴇᴄɪꜰɪᴄ ꜰɪʟᴇ ꜰʀᴏᴍ ᴅʙ.",
     "deletefiles": "ᴅᴇʟᴇᴛᴇ ᴄᴀᴍʀɪᴘ ᴀɴᴅ ᴘʀᴇᴅᴠᴅ ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴛʜᴇ ʙᴏᴛ'ꜱ ᴅᴀᴛᴀʙᴀꜱᴇ.",
     "del_msg": "ʀᴇᴍᴏᴠᴇ ꜰɪʟᴇ ɴᴀᴍᴇ ᴄᴏʟʟᴇᴄᴛɪᴏɴ ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ...",
     
     "movie_update": "ᴏɴ / ᴏꜰꜰ ᴀᴄᴄᴏʀᴅɪɴɢ ʏᴏᴜʀ ɴᴇᴇᴅᴇᴅ...",
     "pm_search": "ᴘᴍ ꜱᴇᴀʀᴄʜ ᴏɴ / ᴏꜰꜰ ᴀᴄᴄᴏʀᴅɪɴɢ ʏᴏᴜʀ ɴᴇᴇᴅᴇᴅ...",
-    "post": "ᴘᴏꜱᴛ ᴀ ᴍᴏᴠɪᴇ ᴜᴘᴅᴀᴛᴇ ᴛᴏ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ.",
     
     "premium_users": "ɢᴇᴛ ʟɪꜱᴛ ᴏꜰ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀꜱ.",
-    "add_redeem": "ɢᴇɴᴇʀᴀᴛᴇ ᴘʀᴇᴍɪᴜᴍ ʀᴇᴅᴇᴇᴍ ᴄᴏᴅᴇꜱ.",
     "get_premium": "ɢᴇᴛ ɪɴꜰᴏ ᴏꜰ ᴀɴʏ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ.",
     "trial_reset": "ʀᴇꜱᴇᴛ ꜰʀᴇᴇ ᴛʀɪᴀʟ ꜰᴏʀ ᴀ ᴜꜱᴇʀ (ᴏʀ ᴀʟʟ).",
     
-    "quality_report": "ᴅᴀᴛᴀʙᴀꜱᴇ ǫᴜᴀʟɪᴛʏ / ʀᴇꜱᴏʟᴜᴛɪᴏɴ ʀᴇᴘᴏʀᴛ.",
-    "quality_help": "ꜱʜᴏᴡ ᴀʟʟ ǫᴜᴀʟɪᴛʏ ᴍᴀɴᴀɢᴇʀ ᴄᴏᴍᴍᴀɴᴅꜱ & ᴇxᴀᴍᴘʟᴇꜱ.",
-    "cleanup_dry_single": "ᴘʀᴇᴠɪᴇᴡ (ɴᴏ ᴅᴇʟᴇᴛᴇ) ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ ꜰᴏʀ 1 ᴍᴏᴠɪᴇ.",
-    "cleanup_confirm_single": "ᴅᴇʟᴇᴛᴇ ʟᴏᴡᴇʀ-ǫᴜᴀʟɪᴛʏ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ꜰᴏʀ 1 ᴍᴏᴠɪᴇ.",
-    "cleanup_dry_year": "ᴘʀᴇᴠɪᴇᴡ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ ꜰᴏʀ ᴀ ꜱᴘᴇᴄɪꜰɪᴄ ʏᴇᴀʀ.",
-    "cleanup_confirm_year": "ᴅᴇʟᴇᴛᴇ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ꜰᴏʀ ᴀ ꜱᴘᴇᴄɪꜰɪᴄ ʏᴇᴀʀ.",
-    "cleanup_dry_batch": "ᴘʀᴇᴠɪᴇᴡ ᴅᴜᴘʟɪᴄᴀᴛᴇ ᴄʟᴇᴀɴᴜᴘ ꜰᴏʀ ᴡʜᴏʟᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.",
-    "cleanup_confirm_batch": "ᴅᴇʟᴇᴛᴇ ꜱᴀꜰᴇ ᴅᴜᴘʟɪᴄᴀᴛᴇꜱ ꜰʀᴏᴍ ᴡʜᴏʟᴇ ᴅᴀᴛᴀʙᴀꜱᴇ.",
 
     "restart": "ʀᴇꜱᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ. 🔁",
-    "commands": "ᴜᴘᴅᴀᴛᴇ ʙᴏᴛ'ꜱ ᴄᴏᴍᴍᴀɴᴅ ᴍᴇɴᴜ.",
 } 
 
 # ============================================================

@@ -6,10 +6,8 @@ marshmallow<4.0.0
 umongo
 requests
 bs4
-shortzy
 pytz
 aiohttp
-telegraph
 pymediainfo-pyrofork
 
 # Other tools

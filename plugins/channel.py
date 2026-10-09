@@ -5,7 +5,6 @@ from datetime import datetime
 from collections import defaultdict
 from plugins.Dreamxfutures.Imdbposter import get_movie_detailsx, fetch_image, get_movie_details
 from database.users_chats_db import db
-from plugins.quality_manager import extract_quality_info, is_high_quality, run_quality_cleanup_background
 
 from pyrogram import Client, filters, enums
 from info import CHANNELS, MOVIE_UPDATE_CHANNEL, LINK_PREVIEW, ABOVE_PREVIEW, BAD_WORDS, ADMINS, LANDSCAPE_POSTER, TMDB_POSTER, MULTIPLE_DB
@@ -272,31 +271,6 @@ async def media_handler(bot, message):
 
     # Note: Save confirmation ab sirf database/ia_filterdb.py ke [SAVED] log se aata hai
     # (wahi real/final filename hota hai jo DB me store hua). Yahan duplicate log nahi lagate.
-
-    # === Quality Management Start ===
-    try:
-        quality_info = extract_quality_info(real_file_name, media.caption)
-
-        # Detailed breakdown sirf DEBUG level pe (default me suppressed) — console/file
-        # clean rehta hai, chahiye ho to logger level DEBUG karke dekha ja sakta hai.
-        logger.debug(
-            f"[QUALITY] {real_file_name[:70]} | "
-            f"source={quality_info.get('source')} | "
-            f"resolution={quality_info.get('resolution')} | "
-            f"score={quality_info.get('quality_score', 0):.1f} | "
-            f"lang={extracted_info.get('language', 'N/A')}"
-        )
-
-        if is_high_quality(quality_info):
-            # ✅ FIX: Ab ye await nahi hota — background task ki tarah fire hota hai,
-            # taaki heavy DB regex scan agli files ke save hone ko block na kare.
-            # QUALITY_CLEANUP_SEMAPHORE (max 2 parallel) DB/CPU overload se bachata hai.
-            asyncio.create_task(
-                run_quality_cleanup_background(MEDIA_DBS, real_file_name, media.caption)
-            )
-
-    except Exception as e:
-        logger.error(f"[QUALITY] Error in quality management: {e}", exc_info=True)
 
     # === Update Processing Start ===
     try:

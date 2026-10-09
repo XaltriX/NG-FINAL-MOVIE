@@ -77,5 +77,3 @@ class dreamcinezoneXBot(Client):
       
 dreamxbotz = dreamcinezoneXBot()
 
-multi_clients = {}
-work_loads = {}

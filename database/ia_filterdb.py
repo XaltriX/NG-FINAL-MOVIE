@@ -323,7 +323,8 @@ def get_cloud_watermark_url(original_tmdb_url: str) -> str:
     # 👇 यहाँ "your_cloud_name" को हटाकर अपना असली Cloud Name डालें
     cloud_name = "ci2woc0d"  
     
-    watermark_text = "%5B%40Tokyo_Updates%5D" 
+    from urllib.parse import quote as _q
+    watermark_text = _q(f"[@{NEW_BRAND}]", safe="")
     
     positions = {
         "bottom_right": "g_south_east,x_30,y_50",
@@ -513,7 +514,7 @@ def unpack_new_file_id(new_file_id):
 # =========================================================
 # GLOBAL CONSTANTS & MAPPINGS
 # =========================================================
-RELEASE_TAG = "~[Tokyo_Updates]"
+RELEASE_TAG = f"~[{NEW_BRAND}]"
 
 LANGUAGE_ALIASES = {
     "Hindi": [r'\bhindi\b', r'\bhin\b'],
@@ -1427,7 +1428,7 @@ async def save_file(media, bot=None, extracted_info=None):
         if extracted.get("split_part"): add_unique(extracted["split_part"])
 
         # [18] Branding Signature
-        parts = [p for p in parts if p and "Tokyo_Updates" not in str(p)]
+        parts = [p for p in parts if p and "Tokyo_Updates" not in str(p) and NEW_BRAND not in str(p)]
         parts.append(RELEASE_TAG)
 
         # Final String Assembly

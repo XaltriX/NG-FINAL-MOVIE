@@ -18,7 +18,6 @@ from Script import script
 from plugins import web_server, check_expired_premium, keep_alive
 from dreamxbotz.Bot import dreamxbotz
 from dreamxbotz.util.keepalive import ping_server
-from dreamxbotz.Bot.clients import initialize_clients
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = 500_000_000
 
@@ -88,7 +87,6 @@ async def dreamxbotz_start():
     await dreamxbotz.start()
     bot_info = await dreamxbotz.get_me()
     dreamxbotz.username = bot_info.username
-    await initialize_clients()
     loaded_plugins = dreamxbotz_plugins_handler(dreamxbotz)
     if loaded_plugins:
         logging.info("✅ Plugins Loaded: %d", len(loaded_plugins))
@@ -110,6 +108,7 @@ async def dreamxbotz_start():
     temp.U_NAME = me.username
     temp.B_NAME = me.first_name
     temp.B_LINK = me.mention
+    temp.FORWARD_ALLOWED = await db.forward_allowed_status(me.id)  # global forward switch from DB
     dreamxbotz.username = '@' + me.username
     dreamxbotz.loop.create_task(check_expired_premium(dreamxbotz))
     logging.info(f"{me.first_name} with Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")

@@ -20,7 +20,6 @@ from Script import script
 from typing import List
 from database.users_chats_db import db
 from bs4 import BeautifulSoup
-from shortzy import Shortzy
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -54,7 +53,7 @@ class temp(object):
     GETALL = {}
     SHORT = {}
     IMDB_CAP = {}
-    VERIFICATIONS = {}
+    FORWARD_ALLOWED = FORWARD_ALLOWED  # real value loaded from DB at startup
     TEMP_INVITE_LINKS = {}
 
 async def is_req_subscribed(bot, user_id, rqfsub_channels):
@@ -716,22 +715,6 @@ async def _get_async_http_session():
         temp.AIOHTTP_SESSION = session
     return session
 
-async def get_shortlink(link, grp_id, is_second_shortener=False, is_third_shortener=False):
-    settings = await get_settings(grp_id)
-    if is_third_shortener:             
-        api, site = settings['api_three'], settings['shortner_three']
-    else:
-        if is_second_shortener:
-            api, site = settings['api_two'], settings['shortner_two']
-        else:
-            api, site = settings['api'], settings['shortner']
-    shortzy = Shortzy(api, site)
-    try:
-        link = await shortzy.convert(link)
-    except Exception as e:
-        link = await shortzy.get_quick_link(link)
-    return link
-
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
     if not settings:
@@ -746,6 +729,51 @@ async def save_group_settings(group_id, key, value):
     await db.update_settings(group_id, current)
 
 
+
+
+# ============================================================
+# BRANDING / CAPTION / FORWARD HELPERS  (NeonGhost_Network)
+# ============================================================
+def _build_old_brand_regex():
+    names = [re.escape(n).replace('_', r'[_\s.\-]?') for n in OLD_BRAND_NAMES]
+    if not names:
+        return None, ""
+    body = '|'.join(names)
+    rx = re.compile(r'(?P<url>(?:https?://)?(?:t\.me|telegram\.me)/)?(?P<at>@)?(?P<name>' + body + r')', re.IGNORECASE)
+    return rx, body
+
+_OLD_BRAND_RE, OLD_BRAND_MONGO_REGEX = _build_old_brand_regex()
+
+def _old_brand_repl(m):
+    if m.group('url'):
+        return f"https://t.me/{NEW_BRAND}"
+    if m.group('at'):
+        return f"@{NEW_BRAND}"
+    return NEW_BRAND
+
+def brand_clean(text):
+    """Replace old channel names (AJK_BOY_OFFICAL, Tokyo_Updates ...) with NEW_BRAND."""
+    if not text or not isinstance(text, str) or _OLD_BRAND_RE is None:
+        return text
+    return _OLD_BRAND_RE.sub(_old_brand_repl, text)
+
+def get_protect_content():
+    """False = users can forward. ONE global switch (admin panel), overrides old per-group file_secure."""
+    return not bool(temp.FORWARD_ALLOWED)
+
+def build_file_caption(raw_file_name, file_size_bytes=None, db_caption=None):
+    """Caption for every file sent. ALWAYS Script.py CAPTION (old DB files too); old names replaced."""
+    raw_file_name = brand_clean(raw_file_name or "")
+    title = clean_filename(raw_file_name) if raw_file_name else ""
+    size = get_size(file_size_bytes) if file_size_bytes else ""
+    try:
+        meta = extract_caption_meta(raw_file_name)
+        caption = CUSTOM_FILE_CAPTION.format(file_name=title or "", file_size=size or "",
+                                             file_caption=brand_clean(db_caption) or "", **meta)
+    except Exception as e:
+        logger.exception(e)
+        caption = f"<b>{title}</b>\n\n<b>Powered By @{NEW_BRAND}</b>"
+    return brand_clean(caption)
 
 #CLEAN_FILENAME____🅰️NKIT_Ⓜ️EENA______
 
@@ -790,7 +818,7 @@ def clean_filename(file_name):
     file_name = ' '.join(cleaned_words).strip()
     file_name = re.sub(r'\s+\.', '.', file_name)
     
-    return file_name
+    return brand_clean(file_name)
 
 
 def remove_prefix_garbage(file_name):
@@ -981,32 +1009,9 @@ def generate_settings_text(settings, title, reset_done=False):
     note = "\n<b>📌 ɴᴏᴛᴇ :- ʀᴇꜱᴇᴛ ꜱᴜᴄᴄᴇꜱꜱғᴜʟʟʏ ✅</b>" if reset_done else ""
     return f"""<b>⚙️ ʏᴏᴜʀ sᴇᴛᴛɪɴɢs ꜰᴏʀ - {title}</b>
 
-✅️ <b><u>1sᴛ ᴠᴇʀɪꜰʏ sʜᴏʀᴛɴᴇʀ</u></b>
-<b>ɴᴀᴍᴇ</b> - <code>{settings.get("shortner", "N/A")}</code>
-<b>ᴀᴘɪ</b> - <code>{settings.get("api", "N/A")}</code>
-
-✅️ <b><u>2ɴᴅ ᴠᴇʀɪꜰʏ sʜᴏʀᴛɴᴇʀ</u></b>
-<b>ɴᴀᴍᴇ</b> - <code>{settings.get("shortner_two", "N/A")}</code>
-<b>ᴀᴘɪ</b> - <code>{settings.get("api_two", "N/A")}</code>
-
-✅️ <b><u>𝟹ʀᴅ ᴠᴇʀɪꜰʏ sʜᴏʀᴛɴᴇʀ</u></b>
-<b>ɴᴀᴍᴇ</b> - <code>{settings.get("shortner_three", "N/A")}</code>
-<b>ᴀᴘɪ</b> - <code>{settings.get("api_three", "N/A")}</code>
-
-⏰ <b>2ɴᴅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ᴛɪᴍᴇ</b> - <code>{settings.get("verify_time", "N/A")}</code>
-⏰ <b>𝟹ʀᴅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ᴛɪᴍᴇ</b> - <code>{settings.get("third_verify_time", "N/A")}</code>
-
-1️⃣ <b>ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ 1</b> - {settings.get("tutorial", TUTORIAL)}
-2️⃣ <b>ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ 2</b> - {settings.get("tutorial_2", TUTORIAL_2)}
-3️⃣ <b>ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ 3</b> - {settings.get("tutorial_3", TUTORIAL_3)}
-
-📝 <b>ʟᴏɢ ᴄʜᴀɴɴᴇʟ ɪᴅ</b> - <code>{settings.get("log", "N/A")}</code>
 🚫 <b>ꜰꜱᴜʙ ᴄʜᴀɴɴᴇʟ ɪᴅ</b> - <code>{settings.get("fsub", "N/A")}</code>
 
-
-🎯 <b>ɪᴍᴅʙ ᴛᴇᴍᴘʟᴀᴛᴇ</b> - <code>{settings.get("template", "N/A")}</code>
-
-📂 <b>ꜰɪʟᴇ ᴄᴀᴘᴛɪᴏɴ</b> - <code>{settings.get("caption", "N/A")}</code>
+🎯 <b>ɪᴍᴅʙ ᴛᴇᴍᴘʟᴀᴛᴇ</b> - <code>{brand_clean(str(settings.get("template", "N/A")))}</code>
 {note}
 """
 
@@ -1015,9 +1020,6 @@ async def group_setting_buttons(grp_id):
     buttons = [[
                 InlineKeyboardButton('ʀᴇꜱᴜʟᴛ ᴘᴀɢᴇ', callback_data=f'setgs#button#{settings.get("button")}#{grp_id}',),
                 InlineKeyboardButton('ʙᴜᴛᴛᴏɴ' if settings.get("button") else 'ᴛᴇxᴛ', callback_data=f'setgs#button#{settings.get("button")}#{grp_id}',),
-            ],[
-                InlineKeyboardButton('ꜰɪʟᴇ ꜱᴇᴄᴜʀᴇ', callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}',),
-                InlineKeyboardButton('✔ Oɴ' if settings["file_secure"] else '✘ Oғғ', callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}',),
             ],[
                 InlineKeyboardButton('ɪᴍᴅʙ ᴘᴏꜱᴛᴇʀ', callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}',),
                 InlineKeyboardButton('✔ Oɴ' if settings["imdb"] else '✘ Oғғ', callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}',),
@@ -1033,9 +1035,6 @@ async def group_setting_buttons(grp_id):
             ],[
                 InlineKeyboardButton('ꜱᴘᴇʟʟ ᴄʜᴇᴄᴋ',callback_data=f'setgs#spell_check#{settings["spell_check"]}#{str(grp_id)}'),
                 InlineKeyboardButton('✔ Oɴ' if settings["spell_check"] else '✘ Oғғ',callback_data=f'setgs#spell_check#{settings["spell_check"]}#{str(grp_id)}')
-            ],[
-                InlineKeyboardButton('Vᴇʀɪғʏ', callback_data=f'setgs#is_verify#{settings.get("is_verify", IS_VERIFY)}#{grp_id}'),
-                InlineKeyboardButton('✔ Oɴ' if settings.get("is_verify", IS_VERIFY) else '✘ Oғғ', callback_data=f'setgs#is_verify#{settings.get("is_verify", IS_VERIFY)}#{grp_id}'),
             ],
             [
                 InlineKeyboardButton("❌ Remove ❌ ", callback_data=f"removegrp#{grp_id}")

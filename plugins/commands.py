@@ -19,7 +19,7 @@ from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
 from database.ia_filterdb import Media, Media2, MEDIA_DBS, delete_file_by_id, delete_files_by_query, get_file_details, unpack_new_file_id, get_bad_files, get_cover_url, backfill_media_type
 from database.users_chats_db import db
 from info import *
-from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, get_shortlink, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename, extract_caption_meta, enforce_daily_limit
+from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename, extract_caption_meta, enforce_daily_limit, build_file_caption, get_protect_content, brand_clean
 
 
 
@@ -37,49 +37,6 @@ async def start(client, message):
         except Exception:
             await message.react(emoji="⚡️", big=True)
     m = message
-    if len(m.command) == 2 and m.command[1].startswith(('notcopy', 'sendall')):
-        _, userid, verify_id, file_id = m.command[1].split("_", 3)
-        user_id = int(userid)
-        grp_id = temp.VERIFICATIONS.get(user_id, 0)
-        settings = await get_settings(grp_id)         
-        verify_id_info = await db.get_verify_id_info(user_id, verify_id)
-        if not verify_id_info or verify_id_info["verified"]:
-            return await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")  
-
-        ist_timezone = pytz.timezone('Asia/Kolkata')
-        if await db.user_verified(user_id):
-            key = "third_time_verified"
-        else:
-            key = "second_time_verified" if await db.is_user_verified(user_id) else "last_verified"
-        current_time = datetime.now(tz=ist_timezone)
-        result = await db.update_notcopy_user(user_id, {key:current_time})
-        await db.update_verify_id_info(user_id, verify_id, {"verified":True})
-        if key == "third_time_verified": 
-            num = 3 
-        else: 
-            num =  2 if key == "second_time_verified" else 1 
-        if key == "third_time_verified": 
-            msg = script.THIRDT_VERIFY_COMPLETE_TEXT
-        else:
-            msg = script.SECOND_VERIFY_COMPLETE_TEXT if key == "second_time_verified" else script.VERIFY_COMPLETE_TEXT
-        if message.command[1].startswith('sendall'):
-            verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
-        else:
-            verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
-        await client.send_message(settings['log'], script.VERIFIED_LOG_TEXT.format(m.from_user.mention, user_id, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %B %Y'), num))
-        btn = [[
-            InlineKeyboardButton("✅ ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ꜰɪʟᴇ ✅", url=verifiedfiles),
-        ]]
-        reply_markup=InlineKeyboardMarkup(btn)
-        dlt=await m.reply_photo(
-            photo=(VERIFY_IMG),
-            caption=msg.format(message.from_user.mention, get_readable_time(TWO_VERIFY_GAP)),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
-        await asyncio.sleep(300)
-        await dlt.delete()
-        return         
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         buttons = [[
                     InlineKeyboardButton('❤️ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ❤️', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
@@ -274,50 +231,6 @@ async def start(client, message):
 
 
     user_id = m.from_user.id
-    if not await db.has_premium_access(user_id):
-        try:
-            grp_id = int(grp_id)
-            user_verified = await db.is_user_verified(user_id)
-            settings = await get_settings(grp_id)
-            is_second_shortener = await db.use_second_shortener(user_id, settings.get('verify_time', TWO_VERIFY_GAP)) 
-            is_third_shortener = await db.use_third_shortener(user_id, settings.get('third_verify_time', THREE_VERIFY_GAP))
-            if (data.startswith("allfiles") and not user_verified) or (settings.get("is_verify", IS_VERIFY) and (not user_verified or is_second_shortener or is_third_shortener)):
-                verify_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
-                await db.create_verify_id(user_id, verify_id)
-                temp.VERIFICATIONS[user_id] = grp_id
-                if message.command[1].startswith('allfiles'):
-                    verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
-                else:
-                    verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
-                if is_third_shortener:
-                    howtodownload = settings.get('tutorial_3', TUTORIAL_3)
-                else:
-                    howtodownload = settings.get('tutorial_2', TUTORIAL_2) if is_second_shortener else settings.get('tutorial', TUTORIAL)
-                buttons = [[
-                    InlineKeyboardButton(text="♻️ ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ᴠᴇʀɪꜰʏ ♻️", url=verify)
-               ],[ 
-                    InlineKeyboardButton(text="📸ʜᴏᴡ ᴛᴏ ᴠᴇʀɪꜰʏ ᴠɪᴅᴇᴏ📸", url=howtodownload),
-
-            ]]
-                reply_markup=InlineKeyboardMarkup(buttons)
-                if await db.user_verified(user_id): 
-                    msg = script.THIRDT_VERIFICATION_TEXT
-                else:            
-                    msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
-                n=await m.reply_text(
-                    text=msg.format(message.from_user.mention),
-                    protect_content = True,
-                    reply_markup=reply_markup,
-                    parse_mode=enums.ParseMode.HTML
-                )
-                await asyncio.sleep(300) 
-                await n.delete()
-                await m.delete()
-                return
-        except Exception as e:
-            print(f"Error In Verification - {e}")
-            pass
-
 
     if data.startswith("allfiles"):
         try:
@@ -345,44 +258,12 @@ async def start(client, message):
                 files_to_send = files[:dl_status["remaining"]]
 
             filesarr = []
-            # Settings lookup fix: fetched ONCE before the loop (was being re-fetched per file before)
-            settings = await get_settings(int(grp_id))
-            DREAMX_CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
-
             for file in files_to_send:
-                # Allfiles file lookup fix: use the file object directly (already have all data
-                # from temp.GETALL) instead of an extra get_file_details() DB query per file
-                f_id = file.file_id  # Conflict से बचने के लिए नाम बदला
-                files1 = file
-                title = clean_filename(files1.file_name)
-                size = get_size(files1.file_size)
-                f_caption = files1.caption
-
-                if DREAMX_CAPTION:
-                    try:
-                        meta = extract_caption_meta(files1.file_name)
-                        f_caption = DREAMX_CAPTION.format(file_name='' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption, **meta)
-                    except Exception as e:
-                        logger.exception(e)
-
-                if f_caption is None:
-                    f_caption = f"{clean_filename(files1.file_name)}"
-
-                # बटन का हिस्सा (Indented inside for loop)
-                if STREAM_MODE and not PREMIUM_STREAM_MODE:
-                    btn = [[InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{f_id}')],
-                           [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-                elif STREAM_MODE and PREMIUM_STREAM_MODE:
-                    if not await db.has_premium_access(message.from_user.id):
-                        btn = [[InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'prestream')],
-                               [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-                    else:
-                        btn = [[InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{f_id}')],
-                               [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-                else:
-                    btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-
-                cover_url = getattr(files1, 'cover', None) if COVERX else None
+                f_id = file.file_id
+                # Caption ALWAYS from Script.py (old DB files too); old channel names replaced.
+                f_caption = build_file_caption(file.file_name, file.file_size, file.caption)
+                btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
+                cover_url = getattr(file, 'cover', None) if COVERX else None
 
                 # FloodWait fix: retry up to 3 times if Telegram asks us to slow down,
                 # instead of letting the whole batch crash out on the first FloodWait.
@@ -393,7 +274,7 @@ async def start(client, message):
                             chat_id=message.from_user.id,
                             file_id=f_id,
                             caption=f_caption,
-                            protect_content=settings.get('file_secure', PROTECT_CONTENT),
+                            protect_content=get_protect_content(),
                             reply_markup=InlineKeyboardMarkup(btn),
                             cover=cover_url
                         )
@@ -445,29 +326,11 @@ async def start(client, message):
                 parse_mode=enums.ParseMode.HTML
             )
         try:
-            if STREAM_MODE and not PREMIUM_STREAM_MODE:
-                btn = [
-                    [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
-                    [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-                ]
-            elif STREAM_MODE and PREMIUM_STREAM_MODE:
-                if not await db.has_premium_access(message.from_user.id):
-                   btn = [
-                        [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'prestream')],
-                        [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-                    ]
-                else:
-                    btn = [
-                        [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
-                        [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-                    ]
-            else:
-
-                btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]] 
+            btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file_id,
-                protect_content=settings.get('file_secure', PROTECT_CONTENT),
+                protect_content=get_protect_content(),
                 reply_markup=InlineKeyboardMarkup(btn))
 
             if not is_premium_user:
@@ -475,17 +338,7 @@ async def start(client, message):
 
             filetype = msg.media
             file = getattr(msg, filetype.value)
-            title = clean_filename(file.file_name)
-            size=get_size(file.file_size)
-            f_caption = f"<code>{title}</code>"
-            settings = await get_settings(int(grp_id))
-            DREAMX_CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
-            if DREAMX_CAPTION:
-                try:
-                    meta = extract_caption_meta(file.file_name)
-                    f_caption=DREAMX_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='', **meta)
-                except:
-                    return
+            f_caption = build_file_caption(file.file_name, file.file_size)
             await msg.edit_caption(
                 f_caption,
                 reply_markup=InlineKeyboardMarkup(btn)
@@ -515,46 +368,14 @@ async def start(client, message):
         )
 
     files = files_[0]
-    title = clean_filename(files.file_name)
-    size = get_size(files.file_size)
-    f_caption = files.caption
-    settings = await get_settings(int(grp_id))            
-    DREAMX_CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
-    if DREAMX_CAPTION:
-        try:
-            meta = extract_caption_meta(files.file_name)
-            f_caption=DREAMX_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption, **meta)
-        except Exception as e:
-            logger.exception(e)
-            f_caption = f_caption
-
-    if f_caption is None:
-        f_caption = clean_filename(files.file_name)
-
-    if STREAM_MODE and not PREMIUM_STREAM_MODE:
-        btn = [
-            [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
-            [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-        ]
-    elif STREAM_MODE and PREMIUM_STREAM_MODE:
-        if not await db.has_premium_access(message.from_user.id):
-            btn = [
-                [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'prestream')],
-                [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-            ]
-        else:
-            btn = [
-                [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
-                [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
-            ]
-    else:
-        btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
+    f_caption = build_file_caption(files.file_name, files.file_size, files.caption)
+    btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
     cover_url = getattr(files, 'cover', None) if COVERX else None
     msg = await client.send_cached_media(
         chat_id=message.from_user.id,
         file_id=file_id,
         caption=f_caption,
-        protect_content=settings.get('file_secure', PROTECT_CONTENT),
+        protect_content=get_protect_content(),
         reply_markup=InlineKeyboardMarkup(btn),
         cover=cover_url
     )
@@ -1056,78 +877,6 @@ async def set_pm_search(client, message):
         logger.error(f"Error in set_pm_search: {e}")
         await message.reply_text(f"<b>❗ An error occurred: {e}</b>")
 
-_media_backfill_lock = asyncio.Lock()
-
-@Client.on_message(filters.private & filters.command("fix_media_speed") & filters.user(ADMINS))
-async def run_media_type_backfill(client, message):
-    """
-    Movie/Series button aur uske Next/Back pagination ko normal /search jitna
-    fast banane ke liye — purani files jinka media_type abhi tak set nahi
-    hua, unko ek baar classify karke save kar deta hai. Isse baar baar wala
-    slow live-regex scan hamesha ke liye khatam ho jaata hai.
-
-    12 lakh+ files jaise bade DB ke liye:
-    - Ye background me chalta hai (bot baaki users ko normal serve karta
-      rehta hai, kahi bhi block/hang nahi hota).
-    - Chhote batches + har batch ke baad chhota pause — DB par ek saath
-      zyada load nahi padta.
-    - Yahi status message har kuch second me apne aap update hoke "live"
-      progress dikhata hai.
-    """
-    if _media_backfill_lock.locked():
-        await message.reply_text(
-            "<b>⏳ Ek backfill pehle se chal raha hai.</b> Please usko complete hone do."
-        )
-        return
-
-    status = await message.reply_text(
-        "<b>⏳ Purani files ko movie/series ke hisaab se classify kiya ja raha hai...</b>\n"
-        "<i>Ye background me chalega, bot normal kaam karta rahega. Status yahi update hoga.</i>"
-    )
-
-    last_edit_at = {"t": 0.0}
-
-    async def progress_cb(coll_name, done, total):
-        now = time.monotonic()
-        # Telegram flood-wait se bachne ke liye edit har ~5 sec me ek baar,
-        # sirf last batch pe hamesha edit karo taaki final count sahi dikhe.
-        if done < total and (now - last_edit_at["t"] < 5):
-            return
-        last_edit_at["t"] = now
-        pct = (done / total * 100) if total else 100.0
-        try:
-            await status.edit(
-                "<b>⏳ Live Status</b>\n"
-                f"• Collection: <code>{coll_name}</code>\n"
-                f"• Progress: {done} / {total} ({pct:.1f}%)"
-            )
-        except Exception:
-            pass
-
-    async def _run_backfill():
-        async with _media_backfill_lock:
-            try:
-                report = await backfill_media_type(progress_cb=progress_cb)
-                total = sum(report.values())
-                if total == 0:
-                    await status.edit(
-                        "<b>✅ Kuch bhi update karne ki zaroorat nahi thi — sab files already classified hain.</b>"
-                    )
-                    return
-                details = "\n".join(f"• <code>{name}</code>: {count}" for name, count in report.items() if count)
-                await status.edit(
-                    "<b>✅ Ho gaya! Movie/Series filtering ab normal search jitni fast hogi.</b>\n\n"
-                    f"<b>Total files updated:</b> {total}\n{details}"
-                )
-            except Exception as e:
-                logger.error(f"Error in run_media_type_backfill: {e}")
-                try:
-                    await status.edit(f"<b>❗ An error occurred: {e}</b>")
-                except Exception:
-                    pass
-
-    asyncio.create_task(_run_backfill())
-
 @Client.on_message(filters.private & filters.command("movie_update") & filters.user(ADMINS))
 async def set_movie_update_notification(client, message):
     bot_id = client.me.id
@@ -1181,192 +930,6 @@ async def confirmation_handler(client, callback_query):
         await callback_query.message.delete()  
     await callback_query.answer()
 
-@Client.on_message(filters.command('set_caption'))
-async def save_caption(client, message):
-    grp_id = message.chat.id
-    title = message.chat.title
-    invite_link = await client.export_chat_invite_link(grp_id)
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")
-    try:
-        caption = message.text.split(" ", 1)[1]
-    except:
-        return await message.reply_text("<code>ɢɪᴠᴇ ᴍᴇ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴀʟᴏɴɢ ᴡɪᴛʜ ɪᴛ.\n\nᴀᴠᴀɪʟᴀʙʟᴇ ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀꜱ -\n<code>{file_name}</code> ➜ File Name\n<code>{file_size}</code> ➜ File Size\n<code>{language}</code> ➜ Auto-detected Language\n<code>{audio}</code> ➜ Auto-detected Audio\n<code>{quality}</code> ➜ Auto-detected Quality\n<code>{season}</code> ➜ Auto-detected Season\n<code>{episode}</code> ➜ Auto-detected Episode\n\nᴇxᴀᴍᴘʟᴇ -\n\n<code>/set_caption 🎬 Title : {file_name}\n📦 Size : {file_size}\n🎞 Season/Ep : {season} | {episode}\n🗣 Language : {language}\n🔊 Audio : {audio}\n📺 Quality : {quality}</code>")
-    await save_group_settings(grp_id, 'caption', caption)
-    await message.reply_text(f"ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴄʜᴀɴɢᴇᴅ ᴄᴀᴘᴛɪᴏɴ ꜰᴏʀ {title}\n\nᴄᴀᴘᴛɪᴏɴ - {caption}", disable_web_page_preview=True)
-    await client.send_message(LOG_API_CHANNEL, f"#Set_Caption\n\nɢʀᴏᴜᴘ ɴᴀᴍᴇ : {title}\n\nɢʀᴏᴜᴘ ɪᴅ: {grp_id}\nɪɴᴠɪᴛᴇ ʟɪɴᴋ : {invite_link}\n\nᴜᴘᴅᴀᴛᴇᴅ ʙʏ : {message.from_user.username}")
-
-
-@Client.on_message(filters.command(["set_tutorial", "set_tutorial_2", "set_tutorial_3"]))
-async def set_tutorial(client, message: Message):
-    grp_id = message.chat.id
-    title = message.chat.title
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text(
-            f"<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...\n\nGroup Name: {title}\nGroup ID: {grp_id}</b>"
-        )
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
-
-    try:
-        tutorial_link = message.text.split(" ", 1)[1]
-    except IndexError:
-        return await message.reply_text(
-            f"<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ !!\n\nᴜꜱᴇ ʟɪᴋᴇ ᴛʜɪꜱ -</b>\n\n"
-            f"<code>/{message.command[0]} https://t.me/NeonGhost_Network</code>"
-        )
-    if message.command[0] == "set_tutorial":
-        tutorial_key = "tutorial"
-    else:
-        tutorial_key = f"tutorial_{message.command[0].split('_', 2)[2]}"
-
-    await save_group_settings(grp_id, tutorial_key, tutorial_link)
-    invite_link = await client.export_chat_invite_link(grp_id)
-    await message.reply_text(
-        f"<b>ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴄʜᴀɴɢᴇᴅ {tutorial_key.replace('_', ' ').title()} ꜰᴏʀ {title}</b>\n\n"
-        f"ʟɪɴᴋ - {tutorial_link}",
-        disable_web_page_preview=True
-    )
-    await client.send_message(
-        LOG_API_CHANNEL,
-        f"#Set_{tutorial_key.title()}_Video\n\n"
-        f"ɢʀᴏᴜᴘ ɴᴀᴍᴇ : {title}\n"
-        f"ɢʀᴏᴜᴘ ɪᴅ : {grp_id}\n"
-        f"ɪɴᴠɪᴛᴇ ʟɪɴᴋ : {invite_link}\n"
-        f"ᴜᴘᴅᴀᴛᴇᴅ ʙʏ : {message.from_user.mention()}"
-    )
-
-
-async def handle_shortner_command(c, m, shortner_key, api_key, log_prefix, fallback_url, fallback_api):
-    grp_id = m.chat.id
-    if not await is_check_admin(c, grp_id, m.from_user.id):
-        return await m.reply_text(script.NT_ADMIN_ALRT_TXT)
-    if len(m.command) != 3:
-        return await m.reply(
-            f"<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ -\n\n`/{m.command[0]} omegalinks.in your_api_key_here`</b>"
-        )
-    sts = await m.reply("<b>♻️ ᴄʜᴇᴄᴋɪɴɢ...</b>")
-    await asyncio.sleep(1.2)
-    await sts.delete()
-    if m.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await m.reply_text("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")
-    try:
-        URL = m.command[1]
-        API = m.command[2]
-        await save_group_settings(grp_id, shortner_key, URL)
-        await save_group_settings(grp_id, api_key, API)
-        await m.reply_text(f"<b><u>✅ sʜᴏʀᴛɴᴇʀ ᴀᴅᴅᴇᴅ</u>\n\nꜱɪᴛᴇ - `{URL}`\nᴀᴘɪ - `{API}`</b>")
-        user_id = m.from_user.id
-        user_info = f"@{m.from_user.username}" if m.from_user.username else f"{m.from_user.mention}"
-        link = (await c.get_chat(m.chat.id)).invite_link
-        grp_link = f"[{m.chat.title}]({link})"
-        log_message = (
-            f"#{log_prefix}\n\nɴᴀᴍᴇ - {user_info}\n\nɪᴅ - `{user_id}`"
-            f"\n\nꜱɪᴛᴇ - {URL}\n\nᴀᴘɪ - `{API}`"
-            f"\n\nɢʀᴏᴜᴘ - {grp_link}\nɢʀᴏᴜᴘ ɪᴅ - `{grp_id}`"
-        )
-        await c.send_message(LOG_API_CHANNEL, log_message, disable_web_page_preview=True)
-    except Exception as e:
-        await save_group_settings(grp_id, shortner_key, fallback_url)
-        await save_group_settings(grp_id, api_key, fallback_api)
-        await m.reply_text(
-            f"<b><u>💢 ᴇʀʀᴏʀ ᴏᴄᴄᴜʀᴇᴅ!</u>\n\n"
-            f"ᴅᴇꜰᴀᴜʟᴛ ꜱʜᴏʀᴛɴᴇʀ ᴀᴘᴘʟɪᴇᴅ\n"
-            f"ɪꜰ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʀʏ ᴀ ᴠᴀʟɪᴅ ꜱɪᴛᴇ ᴀɴᴅ ᴀᴘɪ ᴋᴇʏ.\n\n"
-            f"ʟɪᴋᴇ:\n\n`/{m.command[0]} mdiskshortner.link your_api_key_here`\n\n"
-            f"💔 ᴇʀʀᴏʀ - <code>{e}</code></b>"
-        )
-
-@Client.on_message(filters.command('set_shortner'))
-async def set_shortner(c, m):
-    await handle_shortner_command(c, m, 'shortner', 'api', 'New_Shortner_Set_For_1st_Verify', SHORTENER_WEBSITE, SHORTENER_API)
-
-@Client.on_message(filters.command('set_shortner_2'))
-async def set_shortner_2(c, m):
-    await handle_shortner_command(c, m, 'shortner_two', 'api_two', 'New_Shortner_Set_For_2nd_Verify', SHORTENER_WEBSITE2, SHORTENER_API2)
-
-@Client.on_message(filters.command('set_shortner_3'))
-async def set_shortner_3(c, m):
-    await handle_shortner_command(c, m, 'shortner_three', 'api_three', 'New_Shortner_Set_For_3rd_Verify', SHORTENER_WEBSITE3, SHORTENER_API3)
-
-@Client.on_message(filters.command('set_log_channel'))
-async def set_log(client, message):
-    grp_id = message.chat.id
-    title = message.chat.title
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
-    if len(message.text.split()) == 1:
-        await message.reply("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - \n\n`/set_log_channel -100******`</b>")
-        return
-    sts = await message.reply("<b>♻️ ᴄʜᴇᴄᴋɪɴɢ...</b>")
-    await asyncio.sleep(1.2)
-    await sts.delete()
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")
-    try:
-        log = int(message.text.split(" ", 1)[1])
-    except IndexError:
-        return await message.reply_text("<b><u>ɪɴᴠᴀɪʟᴅ ꜰᴏʀᴍᴀᴛ!!</u>\n\nᴜsᴇ ʟɪᴋᴇ ᴛʜɪs - `/set_log_channel -100xxxxxxxx`</b>")
-    except ValueError:
-        return await message.reply_text('<b>ᴍᴀᴋᴇ sᴜʀᴇ ɪᴅ ɪs ɪɴᴛᴇɢᴇʀ...</b>')
-    try:
-        t = await client.send_message(chat_id=log, text="<b>ʜᴇʏ ᴡʜᴀᴛ's ᴜᴘ!!</b>")
-        await asyncio.sleep(3)
-        await t.delete()
-    except Exception as e:
-        return await message.reply_text(f'<b><u>😐 ᴍᴀᴋᴇ sᴜʀᴇ ᴛʜɪs ʙᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴀᴛ ᴄʜᴀɴɴᴇʟ...</u>\n\n💔 ᴇʀʀᴏʀ - <code>{e}</code></b>')
-    await save_group_settings(grp_id, 'log', log)
-    await message.reply_text(f"<b>✅ sᴜᴄᴄᴇssꜰᴜʟʟʏ sᴇᴛ ʏᴏᴜʀ ʟᴏɢ ᴄʜᴀɴɴᴇʟ ꜰᴏʀ {title}\n\nɪᴅ - `{log}`</b>", disable_web_page_preview=True)
-    user_id = message.from_user.id
-    user_info = f"@{message.from_user.username}" if message.from_user.username else f"{message.from_user.mention}"
-    link = (await client.get_chat(message.chat.id)).invite_link
-    grp_link = f"[{message.chat.title}]({link})"
-    log_message = f"#New_Log_Channel_Set\n\nɴᴀᴍᴇ - {user_info}\n\nɪᴅ - `{user_id}`\n\nʟᴏɢ ᴄʜᴀɴɴᴇʟ ɪᴅ - `{log}`\nɢʀᴏᴜᴘ ʟɪɴᴋ - `{grp_link}`\n\nɢʀᴏᴜᴘ ɪᴅ : `{grp_id}`"
-    await client.send_message(LOG_API_CHANNEL, log_message, disable_web_page_preview=True) 
-
-
-@Client.on_message(filters.command('set_time'))
-async def set_time(client, message):
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("<b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")       
-    grp_id = message.chat.id
-    title = message.chat.title
-    invite_link = await client.export_chat_invite_link(grp_id)
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
-    try:
-        time = int(message.text.split(" ", 1)[1])
-    except:
-        return await message.reply_text("<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ\n\nᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - <code>/set_time 600</code> [ ᴛɪᴍᴇ ᴍᴜꜱᴛ ʙᴇ ɪɴ ꜱᴇᴄᴏɴᴅꜱ ]</b>")   
-    await save_group_settings(grp_id, 'verify_time', time)
-    await message.reply_text(f"<b>✅️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇᴛ 2ɴᴅ ᴠᴇʀɪꜰʏ ᴛɪᴍᴇ ꜰᴏʀ {title}\n\nᴛɪᴍᴇ - <code>{time}</code></b>")
-    await client.send_message(LOG_API_CHANNEL, f"#Set_2nd_Verify_Time\n\nɢʀᴏᴜᴘ ɴᴀᴍᴇ : {title}\n\nɢʀᴏᴜᴘ ɪᴅ : {grp_id}\n\nɪɴᴠɪᴛᴇ ʟɪɴᴋ : {invite_link}\n\nᴜᴘᴅᴀᴛᴇᴅ ʙʏ : {message.from_user.username}")
-
-@Client.on_message(filters.command('set_time_2'))
-async def set_time_2(client, message):
-    chat_type = message.chat.type
-    if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("<b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")       
-    grp_id = message.chat.id
-    title = message.chat.title
-    invite_link = await client.export_chat_invite_link(grp_id)
-    if not await is_check_admin(client, grp_id, message.from_user.id):
-        return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
-    try:
-        time = int(message.text.split(" ", 1)[1])
-    except:
-        return await message.reply_text("<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ\n\nᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - <code>/set_time 3600</code> [ ᴛɪᴍᴇ ᴍᴜꜱᴛ ʙᴇ ɪɴ ꜱᴇᴄᴏɴᴅꜱ ]</b>")   
-    await save_group_settings(grp_id, 'third_verify_time', time)
-    await message.reply_text(f"<b>✅️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇᴛ 3ʀᴅ ᴠᴇʀɪꜰʏ ᴛɪᴍᴇ ꜰᴏʀ {title}\n\nᴛɪᴍᴇ - <code>{time}</code></b>")
-    await client.send_message(LOG_API_CHANNEL, f"#Set_3rd_Verify_Time\n\nɢʀᴏᴜᴘ ɴᴀᴍᴇ : {title}\n\nɢʀᴏᴜᴘ ɪᴅ : {grp_id}\n\nɪɴᴠɪᴛᴇ ʟɪɴᴋ : {invite_link}\n\nᴜᴘᴅᴀᴛᴇᴅ ʙʏ : {message.from_user.username}")
-
-
 @Client.on_message(filters.command('details'))
 async def all_settings(client, message):
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -1396,21 +959,7 @@ async def reset_group_callback(client, callback_query):
         return await callback_query.answer(script.NT_ADMIN_ALRT_TXT, show_alert=True)
     await callback_query.answer("♻️ ʀᴇꜱᴇᴛᴛɪɴɢ ꜱᴇᴛᴛɪɴɢꜱ...")
     defaults = {
-        'shortner': SHORTENER_WEBSITE,
-        'api': SHORTENER_API,
-        'shortner_two': SHORTENER_WEBSITE2,
-        'api_two': SHORTENER_API2,
-        'shortner_three': SHORTENER_WEBSITE3,
-        'api_three': SHORTENER_API3,
-        'verify_time': TWO_VERIFY_GAP,
-        'third_verify_time': THREE_VERIFY_GAP,
         'template': IMDB_TEMPLATE,
-        'tutorial': TUTORIAL,
-        'tutorial_2': TUTORIAL_2,
-        'tutorial_3': TUTORIAL_3,
-        'caption': CUSTOM_FILE_CAPTION,
-        'log': LOG_CHANNEL,
-        'is_verify': IS_VERIFY,
         'fsub': AUTH_CHANNELS
     }
     current = await get_settings(grp_id)
@@ -1426,28 +975,6 @@ async def reset_group_callback(client, callback_query):
         [InlineKeyboardButton("🚫 ᴄʟᴏꜱᴇ", callback_data="close_data")]
     ]
     await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), disable_web_page_preview=True)
-
-@Client.on_message(filters.command("verify") & filters.user(ADMINS))
-async def verify(bot, message):
-    try:
-        chat_type = message.chat.type
-        if chat_type == enums.ChatType.PRIVATE:
-            return await message.reply_text("ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴡᴏʀᴋs ᴏɴʟʏ ɪɴ ɢʀᴏᴜᴘs!")
-        if chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-            grpid = message.chat.id
-            title = message.chat.title
-            command_text = message.text.split(' ')[1] if len(message.text.split(' ')) > 1 else None
-            if command_text == "off":
-                await save_group_settings(grpid, 'is_verify', False)
-                return await message.reply_text("✓ ᴠᴇʀɪꜰʏ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅɪsᴀʙʟᴇᴅ.")
-            elif command_text == "on":
-                await save_group_settings(grpid, 'is_verify', True)
-                return await message.reply_text("✗ ᴠᴇʀɪꜰʏ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴇɴᴀʙʟᴇᴅ.")
-            else:
-                return await message.reply_text("ʜɪ, ᴛᴏ ᴇɴᴀʙʟᴇ ᴠᴇʀɪꜰʏ, ᴜsᴇ <code>/verify on</code> ᴀɴᴅ ᴛᴏ ᴅɪsᴀʙʟᴇ ᴠᴇʀɪꜰʏ, ᴜsᴇ <code>/verify off</code>.")
-    except Exception as e:
-        print(f"Error: {e}")
-        await message.reply_text(f"Error: {e}")
 
 @Client.on_message(filters.command('set_fsub'))
 async def set_fsub(client, message):

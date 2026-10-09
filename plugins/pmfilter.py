@@ -1,8 +1,7 @@
 from pyrogram.errors import MessageNotModified
-from utils import get_size, is_subscribed, is_req_subscribed, group_setting_buttons, get_poster, temp, get_settings, get_time, save_group_settings, get_cap, imdb, is_check_admin, extract_request_content, log_error, clean_filename, generate_season_variations, clean_search_text, extract_caption_meta
+from utils import get_size, is_subscribed, is_req_subscribed, group_setting_buttons, get_poster, temp, get_settings, get_time, save_group_settings, get_cap, imdb, is_check_admin, extract_request_content, log_error, clean_filename, generate_season_variations, clean_search_text, extract_caption_meta, brand_clean
 import tracemalloc
 from rapidfuzz import process, fuzz
-from dreamxbotz.util.file_properties import get_name, get_hash
 from urllib.parse import quote_plus
 import logging
 from database.ia_filterdb import Media, Media2, MEDIA_DBS, delete_file_by_id, get_file_details, get_search_results, get_bad_files,normalize_for_search
@@ -1490,59 +1489,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         else:
             await query.answer("No permission ❌", show_alert=True)
 
-    elif DreamxData.startswith("generate_stream_link"):
-        _, file_id = DreamxData.split(":")
-        try:
-            user_id = query.from_user.id
-            username = query.from_user.mention
-            log_msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id,)
-            fileName = {quote_plus(get_name(log_msg))}
-            dreamx_stream = f"{URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-            dreamx_download = f"{URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
-            xo = await query.message.reply_text(f'💘')
-            await asyncio.sleep(1)
-            await xo.delete()
-            await log_msg.reply_text(
-                text=f"•• ʟɪɴᴋ ɢᴇɴᴇʀᴀᴛᴇᴅ ꜰᴏʀ ɪᴅ #{user_id} \n•• ᴜꜱᴇʀɴᴀᴍᴇ : {username} \n\n•• ᖴᎥᒪᗴ Nᗩᗰᗴ : {fileName}",
-                quote=True,
-                disable_web_page_preview=True,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Fast Download 🚀", url=dreamx_download),  # we download Link
-                                                    InlineKeyboardButton('🖥️ Watch online 🖥️', url=dreamx_stream)]])  # web stream Link
-            )
-            dreamcinezone = await query.edit_message_reply_markup(
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("🚀 Download ", url=dreamx_download),
-                        InlineKeyboardButton('🖥️ Watch ', url=dreamx_stream)
-                    ],
-                    [
-                        InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)
-                    ]
-                ])
-            )
-            await asyncio.sleep(DELETE_TIME)
-            await dreamcinezone.delete()
-            return
-        except Exception as e:
-            print(e)
-            await query.answer(f"⚠️ SOMETHING WENT WRONG STREAM LINK  \n\n{e}", show_alert=True)
-            return
-
-
-    elif query.data == "prestream":
-        await query.answer(text=script.PRE_STREAM_ALERT, show_alert=True)
-        dreamcinezone = await client.send_photo(
-            chat_id=query.message.chat.id,
-            photo="https://i.ibb.co/whf8xF7j/photo-2025-07-26-10-42-46-7531339305176793100.jpg", 
-            caption=script.PRE_STREAM,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Buy Premium 🚀", callback_data="premium_info")]
-            ])
-        )
-        await asyncio.sleep(DELETE_TIME)
-        await dreamcinezone.delete()
-
-
     elif query.data == "pagesn1":
         await query.answer(text=script.PAGE_TXT, show_alert=True)
 
@@ -2043,7 +1989,7 @@ async def auto_filter(client, msg, spoll=False):
     if float(remaining_seconds) < 0: 
         remaining_seconds = "0.10"  # Midnight crossover error handler
 
-    TEMPLATE = settings.get('template', script.IMDB_TEMPLATE_TXT)
+    TEMPLATE = brand_clean(settings.get('template', script.IMDB_TEMPLATE_TXT))
 
     if imdb:
         cap = TEMPLATE.format(
@@ -2286,7 +2232,7 @@ async def old_auto_filter(client, msg, spoll=False):
     TEMPLATE = script.IMDB_TEMPLATE_TXT
     settings = await get_settings(message.chat.id)
     if settings['template']:
-        TEMPLATE = settings['template']
+        TEMPLATE = brand_clean(settings['template'])
 
     if imdb:
         cap = TEMPLATE.format(
