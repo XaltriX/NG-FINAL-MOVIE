@@ -49,6 +49,7 @@ async def _home():
         [B(f"Premium: {_onoff(botcfg.get('premium_on'))}", callback_data="adp#t#premium_on")],
         [B("📦 Plans & prices", callback_data="adp#plans"), B("💳 Payment methods", callback_data="adp#pm")],
         [B(f"⏳ Pending ({pend})", callback_data="adp#pend"), B("🫂 Refer", callback_data="adp#ref")],
+        [B("👥 Premium users", callback_data="adp#pu#0")],
         [B("⬅️ Back", callback_data="adc#home"), B("❌ Close", callback_data="adm#close")],
     ])
     return text, kb
@@ -133,6 +134,30 @@ def _refer():
     return text, kb
 
 
+async def _pu_page(page):
+    import datetime
+    from premium_ui import fmt_dt
+    now = datetime.datetime.utcnow()
+    q = {"expiry_time": {"$gt": now}}
+    total = await db.users.count_documents(q)
+    rows = [d async for d in db.users.find(q).sort("expiry_time", 1).skip(page * 8).limit(8)]
+    lines = []
+    for i, d in enumerate(rows, page * 8 + 1):
+        u = await db.col.find_one({"id": d["id"]}, {"name": 1}) or {}
+        lines.append(f"{i}. <b>{(u.get('name') or '—')[:20]}</b> <code>{d['id']}</code>\n    ⏰ {fmt_dt(d['expiry_time'].replace(tzinfo=None))}")
+    text = (f"<b>👥 PREMIUM USERS ({total})</b>\n<b>━━━━━━━━━━━━━━━</b>\n\n" + ("\n".join(lines) or "—"))
+    nav = []
+    if page > 0:
+        nav.append(B("⬅️ Prev", callback_data=f"adp#pu#{page - 1}"))
+    if (page + 1) * 8 < total:
+        nav.append(B("Next ➡️", callback_data=f"adp#pu#{page + 1}"))
+    kb = [nav] if nav else []
+    kb += [[B("➕ Add", callback_data="adp#puadd"), B("🗑 Remove", callback_data="adp#purm")],
+           [B("🔎 Find by ID", callback_data="adp#pufind")],
+           [B("⬅️ Back", callback_data="adp#home"), B("❌ Close", callback_data="adm#close")]]
+    return text, M(kb)
+
+
 def _cancel(back):
     return M([[B("🚫 Cancel", callback_data=f"adp#{back}")]])
 
@@ -165,6 +190,17 @@ async def adp_cb(client, query):
         await query.answer()
         text, kb = _methods()
         return await _edit(msg, text, kb)
+    if act == "pu":
+        await query.answer()
+        text, kb = await _pu_page(int(a or 0))
+        return await _edit(msg, text, kb)
+    if act in ("puadd", "purm", "pufind"):
+        PENDING[uid] = {"kind": act, "msg": msg}
+        ask = {"puadd": "<b>➕ Send:</b> <code>user_id days</code>\n<b>Example:</b> <code>123456789 30</code>",
+               "purm": "<b>🗑 Send the user ID to remove premium</b>",
+               "pufind": "<b>🔎 Send the user ID</b>"}[act]
+        await query.answer()
+        return await _edit(msg, ask, _cancel("pu#0"))
     if act == "ref":
         await query.answer()
         text, kb = _refer()
@@ -338,6 +374,35 @@ async def adp_text(client, message):
         text, kb = _methods()
         await _done(message, "<b>✅ QR added</b>", text, kb)
 
+    elif kind in ("puadd", "purm", "pufind"):
+        import datetime
+        from premium_ui import fmt_dur, fmt_dt
+        from languages import get_lang, tr
+        parts = txt.split()
+        if not parts or not parts[0].lstrip("-").isdigit():
+            await message.reply_text("<b>❌ Send a valid user ID.</b>")
+            raise StopPropagation
+        target = int(parts[0])
+        if kind == "puadd":
+            if len(parts) < 2 or not parts[1].isdigit() or not (1 <= int(parts[1]) <= 3650):
+                await message.reply_text("<b>❌ Send:</b> <code>user_id days</code>")
+                raise StopPropagation
+            until = await payments.grant_premium(target, int(parts[1]))
+            lang = await get_lang(target)
+            try:
+                await client.send_message(target, tr("pay_approved", lang, dur=fmt_dur(int(parts[1]), lang), until=fmt_dt(until)))
+            except Exception:
+                pass
+            result = f"<b>✅ Premium added: {parts[1]} days</b>\n<b>⏰ Till {fmt_dt(until)}</b>"
+        elif kind == "purm":
+            ok = await db.remove_premium_access(target)
+            result = "<b>✅ Premium removed</b>" if ok else "<b>⚠️ User not found / not premium</b>"
+        else:
+            exp = await payments.get_expiry(target)
+            result = f"<b>💎 Premium till {fmt_dt(exp)}</b>" if exp else "<b>❌ Not a premium user</b>"
+        PENDING.pop(uid, None)
+        text, kb = await _pu_page(0)
+        await _done(message, f"<b>User</b> <code>{target}</code>\n{result}", text, kb)
     elif kind == "refer_num":
         if not txt.isdigit() or not (1 <= int(txt) <= 1000):
             await message.reply_text("<b>❌ Send a number (1-1000).</b>")

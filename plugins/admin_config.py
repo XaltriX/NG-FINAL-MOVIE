@@ -23,6 +23,7 @@ NUM = {
     "delete_extra_min_premium": ("Extra delete time (premium)", "min", 0, 10080),
     "delete_fallback_sec": ("Delete time if length unknown (free)", "sec", 30, 86400),
     "delete_fallback_sec_premium": ("Delete time if length unknown (premium)", "sec", 30, 604800),
+    "group_cmd_delete_sec": ("Group: delete /command after", "sec", 5, 3600),
     "verify_hours": ("Access after verification", "hours", 1, 720),
     "verify_min_seconds": ("Minimum verify time (anti-bypass)", "sec", 0, 600),
 }
@@ -60,7 +61,8 @@ def _lim():
         f"<b>⏳ Free/verified delete:</b> movie length + {g('delete_extra_min')} min\n"
         f"<b>💎 Premium delete:</b> movie length + {g('delete_extra_min_premium')} min\n"
         f"<b>❓ Length unknown:</b> free {g('delete_fallback_sec')}s • premium {g('delete_fallback_sec_premium')}s\n"
-        f"<b>🔒 Forward lock for free users:</b> {_onoff(g('lock_free_forward'))}\n\n"
+        f"<b>🔒 Forward lock for free users:</b> {_onoff(g('lock_free_forward'))}\n"
+        f"<b>🧹 Group /command@bot delete:</b> {_onoff(g('group_cmd_delete'))} after {g('group_cmd_delete_sec')}s\n\n"
         "<b>Tap to edit 👇</b>"
     )
     kb = M([
@@ -70,6 +72,8 @@ def _lim():
         [B("❓ Unknown (free)", callback_data="adc#set#delete_fallback_sec"),
          B("❓ Unknown (prem)", callback_data="adc#set#delete_fallback_sec_premium")],
         [B(f"🔒 Forward lock: {_onoff(g('lock_free_forward'))}", callback_data="adc#t#lock_free_forward")],
+        [B(f"🧹 Group cmd delete: {_onoff(g('group_cmd_delete'))}", callback_data="adc#t#group_cmd_delete"),
+         B("⏱ Delay", callback_data="adc#set#group_cmd_delete_sec")],
         [B("⬅️ Back", callback_data="adc#home"), B("❌ Close", callback_data="adm#close")],
     ])
     return text, kb
@@ -150,12 +154,12 @@ async def adc_cb(client, query):
         return await _edit(msg, text, kb)
 
     if act == "t":
-        if arg not in ("lock_free_forward", "verify_on"):
+        if arg not in ("lock_free_forward", "verify_on", "group_cmd_delete"):
             return await query.answer("Unknown", show_alert=True)
         new = not botcfg.get(arg)
         await botcfg.set(arg, new)
         await query.answer(_onoff(new))
-        text, kb = _lim() if arg == "lock_free_forward" else _ver()
+        text, kb = _ver() if arg == "verify_on" else _lim()
         return await _edit(msg, text, kb)
 
     if act == "set":

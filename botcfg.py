@@ -34,6 +34,8 @@ DEFAULTS = {
         {"id": "qr0",  "type": "qr",  "value": QR_CODE,       "on": True},
     ],
     "fsub_channels": [],              # extra force-sub channel ids (added from /admin)
+    "group_cmd_delete": True,         # delete /command@bot messages in groups
+    "group_cmd_delete_sec": 30,
     "refer_on": True,
     "refer_need": 2,                  # qualified friends needed for one reward
     "refer_days": 1,                  # premium days per reward

@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 lock = asyncio.Lock()
 
 # callbacks owned by other plugins: this catch-all handler must not touch / answer them
-EXTERNAL_CB_PREFIXES = ("adm#", "adc#", "adp#", "adx#", "pr#", "vf#", "setlang#", "lang_menu")
+EXTERNAL_CB_PREFIXES = ("adm#", "adc#", "adp#", "adx#", "pr#", "rq#", "acc#", "vf#", "setlang#", "lang_menu")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -1532,9 +1532,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         lang = await get_lang(query.from_user.id)
         buttons = [[
             InlineKeyboardButton('‼️ ᴅɪꜱᴄʟᴀɪᴍᴇʀ ‼️', callback_data='disclaimer'),
-            InlineKeyboardButton ('🪔 sᴏᴜʀᴄᴇ', callback_data='source'),
-        ],[
-            InlineKeyboardButton('ᴅᴏɴᴀᴛɪᴏɴ 💰', callback_data='donation'),
+            InlineKeyboardButton('💼 ʙᴜʏ ᴛʜɪꜱ ʙᴏᴛ', url=OWNER_LNK),
         ],[
             InlineKeyboardButton(lbtn("btn_back_home", lang), callback_data='start')
         ]]
@@ -1579,18 +1577,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
             logging.exception("Error in give_trial callback")
 
 
-
-    elif query.data == "source":
-        buttons = [[
-            InlineKeyboardButton('𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫_𝐁𝐨𝐲™(𝙉𝙚𝙤𝙣𝙂𝙝𝙤𝙨𝙩😝)📜', url='https://t.me/NeonGhost'),
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ⇋', callback_data='about')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.edit_text(
-            text=script.SOURCE_TXT,
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
 
     elif query.data == "ref_point":
         await query.answer(f'You Have: {referdb.get_refer_points(query.from_user.id)} Refferal points.', show_alert=True)
@@ -1872,7 +1858,15 @@ async def auto_filter(client, msg, spoll=False):
             m = await message.reply_text(f'**•『 🔍 ɪ ᴀᴍ ꜱᴇᴀʀᴄʜɪɴɢ 』•** `{search}`', reply_to_message_id=message.id)
             import stats
             search = await stats.apply_alias(search)
-            files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
+            _pref_q = search
+            if message.from_user:
+                import account as _acc
+                _pref_q = await _acc.apply_pref(message.from_user.id, search)
+            files, offset, total_results = await get_search_results(message.chat.id, _pref_q, offset=0, filter=True)
+            if files:
+                search = _pref_q          # keep paging consistent with the preferred search
+            elif _pref_q != search:       # preferred quality/language not available -> normal search (all files)
+                files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
             settings = await get_settings(message.chat.id)
             
             if not files:
@@ -2524,48 +2518,34 @@ async def advantage_spell_chok(client, message):
     title_for_imdb, _meta_suffix, _year = split_query_meta(search)
     poster_query = title_for_imdb or search
 
+    import requests_flow as rqf
+    _uid = message.from_user.id if message.from_user else 0
+    _lang = await get_lang(_uid) if _uid else "en"
+    _req_row = [InlineKeyboardButton(lbtn("btn_request", _lang), callback_data=f"rq#r#{rqf.make_token(poster_query)}")]
+    # show "not found + Request" at once; the (slow) IMDb suggestions are added to the same message afterwards
+    wait_msg = await message.reply_text(
+        tr("nf_text", _lang, title=poster_query),
+        reply_markup=InlineKeyboardMarkup([_req_row]), reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML)
+
     try:
         movies = await get_poster(poster_query, bulk=True)
     except Exception as e:
         logger.exception("get_poster failed for query=%s: %s", query, e)
-        try:
-            k = await message.reply(script.I_CUDNT.format(message.from_user.mention))
-            await asyncio.sleep(60)
-            try:
-                await k.delete()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        return
+        movies = None
 
     if not movies:
         google = quote_plus(search)
-        button = [[InlineKeyboardButton(
-            "🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍",
-            url=f"https://www.google.com/search?q={google}"
-        )]]
-
-        k = await message.reply_text(
-            text=script.I_CUDNT.format(search),
-            reply_markup=InlineKeyboardMarkup(button)
-        )
-
-        await asyncio.sleep(60)
-
-        try:
-            await k.delete()
-        except Exception:
-            pass
-
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        await wait_msg.edit_text(
+            tr("nf_text", _lang, title=poster_query),
+            reply_markup=InlineKeyboardMarkup([_req_row, [InlineKeyboardButton(
+                "🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍", url=f"https://www.google.com/search?q={google}")]]),
+            parse_mode=enums.ParseMode.HTML)
+        await asyncio.sleep(120)
+        for _m in (wait_msg, message):
+            try:
+                await _m.delete()
+            except Exception:
+                pass
         return
 
     user = message.from_user.id if message.from_user else 0
@@ -2603,13 +2583,14 @@ async def advantage_spell_chok(client, message):
         )
     ])
 
-    d = await message.reply_text(
+    buttons.insert(0, _req_row)
+    await wait_msg.edit_text(
         text=script.CUDNT_FND.format(message.from_user.mention),
-        reply_markup=InlineKeyboardMarkup(buttons),
-        reply_to_message_id=message.id
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
+    d = wait_msg
 
-    await asyncio.sleep(60)
+    await asyncio.sleep(120)
 
     try:
         await d.delete()

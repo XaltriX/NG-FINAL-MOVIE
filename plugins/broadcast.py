@@ -205,7 +205,6 @@ async def broadcast_users(bot, message):
         f"⛔ Blocked: <code>{blocked}</code>\n"
         f"🗑️ Deleted: <code>{deleted}</code>\n"
         f"❌ Failed: <code>{failed}</code>\n\n"
-        f"🌿<blockquote> Maintained by :【𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫_𝐁𝐨𝐲™】</blockquote>"
     )
     await status_msg.edit(final_status)
 
@@ -340,7 +339,6 @@ async def broadcast_group(bot, message):
         f"👥 Total Groups: <code>{total_chats}</code>\n"
         f"📬 Success: <code>{success}</code>\n"
         f"❌ Failed: <code>{failed}</code>\n\n"
-        f"🌿<blockquote> Maintained by :【𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫_𝐁𝐨𝐲™】</blockquote>"
     )
     await status_msg.edit(final_text)
 

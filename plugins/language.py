@@ -32,4 +32,14 @@ async def set_lang_cb(client, query):
         await query.message.delete()
     except Exception:
         pass
+    _u = await db.users.find_one_and_update({"id": user.id}, {"$unset": {"pending_lang_start": ""}})
+    pending = _u.get("pending_lang_start") if _u else None
+    if pending:
+        from pyrogram.types import InlineKeyboardButton as B, InlineKeyboardMarkup as M
+        from info import ADMINS  # noqa: F401
+        from utils import temp
+        await client.send_message(
+            query.message.chat.id, tr("lang_then_file", code), parse_mode=enums.ParseMode.HTML,
+            reply_markup=M([[B(btn("btn_get_file", code), url=f"https://t.me/{temp.U_NAME}?start={pending}")]]))
+        return
     await send_start(client, user, query.message.chat.id, code)

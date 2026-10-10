@@ -16,7 +16,8 @@ def start_markup(lang, user_id):
          InlineKeyboardButton(btn("btn_about", lang), callback_data="about")],
         [InlineKeyboardButton(btn("btn_top", lang), callback_data="topsearch"),
          InlineKeyboardButton(btn("btn_premium", lang), callback_data="premium_info")],
-        [InlineKeyboardButton(btn("btn_language", lang), callback_data="lang_menu")],
+        [InlineKeyboardButton(btn("btn_language", lang), callback_data="lang_menu"),
+         InlineKeyboardButton(btn("btn_account", lang), callback_data="acc#home")],
     ]
     if user_id in ADMINS:
         rows.append([InlineKeyboardButton(btn("btn_admin", lang), callback_data="adm#open")])

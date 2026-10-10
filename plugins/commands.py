@@ -100,6 +100,11 @@ async def start(client, message):
         raise StopPropagation
 
     data = message.command[1]
+    if await get_lang_raw(message.from_user.id) is None:
+        # old user who never chose a language: ask first, then give him his file
+        await db.users.update_one({"id": message.from_user.id}, {"$set": {"pending_lang_start": data}}, upsert=True)
+        await message.reply_text(LANG_PICK_TEXT, reply_markup=lang_picker_markup(), parse_mode=enums.ParseMode.HTML)
+        return
     try:
         _, grp_id, file_id = data.split("_", 2)
         grp_id = int(grp_id)
@@ -164,6 +169,7 @@ async def start(client, message):
             "file_id": f.file_id,
             "caption": build_file_caption(f.file_name, f.file_size, f.caption),
             "cover": getattr(f, "cover", None) if COVERX else None,
+            "ref": f.file_id, "name": f.file_name,
         } for f in to_send]
         sent = await deliver(client, user_id, items, lang, policy)
         if policy["free"]:
@@ -180,6 +186,7 @@ async def start(client, message):
             "file_id": file_id,
             "caption": build_file_caption(f.file_name, f.file_size, f.caption),
             "cover": getattr(f, "cover", None) if COVERX else None,
+            "ref": file_id, "name": f.file_name,
         }
     else:                                          # old link for a file that is not in the DB
         try:
@@ -416,65 +423,19 @@ async def requests(bot, message):
         await message.delete()
         return
 
-    # --- 4. SENDING REQUEST TO ADMIN/CHANNEL ---
-    try:
-        btn_admin = [[
-            InlineKeyboardButton('👁️ᴠɪᴇᴡ ʀᴇǫᴜᴇꜱᴛ👁️', url=f"{source_link}"),
-            InlineKeyboardButton('💢ꜱʜᴏᴡ ᴏᴘᴛɪᴏɴꜱ💢', callback_data=f'show_option#{reporter}')
-        ]]
-
-        request_text = (
-            f"<b>🎬 ʀᴇǫᴜᴇꜱᴛ : <code>{content}</code>\n\n"
-            f"👤 ʀᴇᴘᴏʀᴛᴇᴅ ʙʏ : {mention}\n"
-            f"🆔 ʀᴇᴘᴏʀᴛᴇʀ ɪᴅ : <code>{reporter}</code>\n"
-            f"👥 ɢʀᴏᴜᴘ ɴᴀᴍᴇ : <code>{group_name}</code>\n\n"
-            f"#ʀᴇǫᴜᴇꜱᴛ ⚡️</b>"
-        )
-
-        if REQST_CHANNEL:
-            reported_post = await bot.send_message(
-                chat_id=REQST_CHANNEL, 
-                text=request_text, 
-                reply_markup=InlineKeyboardMarkup(btn_admin)
-            )
-            success = True
-        elif ADMINS:
-            for admin in ADMINS:
-                reported_post = await bot.send_message(
-                    chat_id=admin, 
-                    text=request_text, 
-                    reply_markup=InlineKeyboardMarkup(btn_admin)
-                )
-            success = True
-
-    except Exception as e:
-        await message.reply_text(f"<b>ᴇʀʀᴏʀ:</b> <code>{e}</code>")
-        return
-
-    # --- 5. USER NOTIFICATION & AUTO-DELETE ---
-    if success and reported_post:
+    # --- 4. ONE CARD PER MOVIE (more users are added to the same card) ---
+    import requests_flow as rqf
+    from languages import get_lang as _gl, tr as _tr
+    lang = await _gl(message.from_user.id)
+    res = await rqf.submit(bot, message.from_user, content, f"Group: {group_name}")
+    key = "req_already" if res == "already" else "req_sent"
+    confirm_msg = await message.reply_text(_tr(key, lang), parse_mode=enums.ParseMode.HTML)
+    await asyncio.sleep(60)
+    for _m in (confirm_msg, message):
         try:
-            link = await bot.create_chat_invite_link(int(REQST_CHANNEL))
-            btn_user = [[
-                InlineKeyboardButton('ᴍᴏᴠɪᴇ ᴜᴘᴅᴀᴛᴇ ᴄʜᴀɴɴᴇʟ📢', url=MOVIE_UPDATE_CHANNEL_LINK),
-                InlineKeyboardButton('ᴠɪᴇᴡ ʀᴇǫᴜᴇꜱᴛ👁‍🗨', url=f"{reported_post.link}")
-            ]]
-
-            confirm_msg = await message.reply_text(
-                "<b>✅ आपकी रिक्वेस्ट सफलतापूर्वक भेज दी गई है!\n\n"
-                "⌛ थोड़ा इंतज़ार (Wait) कीजिये...\n"
-                "📢 नीचे दिए गए बटन पर क्लिक करके चैनल Join करें available होते ही यहां Post डाल दी जाएगी और अपनी ᴠɪᴇᴡ ʀᴇǫᴜᴇꜱᴛ पर रिक्वेस्ट चेक कर सकते हो।</b>",
-                reply_markup=InlineKeyboardMarkup(btn_user)
-            )
-
-            # 60 seconds baad command aur response dono delete ho jayenge
-            await asyncio.sleep(60)
-            await confirm_msg.delete()
-            await message.delete()
-        except:
+            await _m.delete()
+        except Exception:
             pass
-
-
 
 
 @Client.on_message(filters.command("send") & filters.user(ADMINS))

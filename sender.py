@@ -80,7 +80,7 @@ async def deliver(client, user_id, items, lang, policy):
     """
     from utils import build_file_caption  # local import: utils imports a lot
 
-    sent, delays = [], []
+    sent, delays, done_items = [], [], []
     for it in items:
         msg = None
         for _ in range(3):
@@ -113,6 +113,7 @@ async def deliver(client, user_id, items, lang, policy):
                 logger.debug(f"legacy caption failed: {e}")
 
         sent.append(msg)
+        done_items.append(it)
         delays.append(access.delete_seconds(policy, access.media_duration(msg)))
         await asyncio.sleep(0.3)
 
@@ -121,6 +122,12 @@ async def deliver(client, user_id, items, lang, policy):
 
     if policy["free"]:
         await db.increase_download(user_id, len(sent))
+    try:
+        import account
+        for _it in done_items:
+            await account.record(user_id, _it.get('ref'), _it.get('name'))
+    except Exception as e:
+        logger.debug(f'history: {e}')
     try:
         import stats
         await stats.bump_downloads(len(sent))
