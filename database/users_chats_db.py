@@ -18,6 +18,8 @@ class Database:
         self.filename_col = self.db.filename
         self.movie_updates = self.db.movie_updates
         self.connection = self.db.connections
+        self.tokens = self.db.verify_tokens
+        self.pdel = self.db.pending_deletes
 
     async def add_name(self, filename):
         if await self.movie_updates.find_one({'_id': filename}):
@@ -248,14 +250,22 @@ class Database:
         is_premium = False
         if user_data:
             expiry_time = user_data.get("expiry_time")
-            if isinstance(expiry_time, datetime.datetime) and now <= expiry_time:
+            if isinstance(expiry_time, datetime.datetime) and datetime.datetime.utcnow() <= (expiry_time.replace(tzinfo=None) if expiry_time.tzinfo is None else expiry_time.astimezone(pytz.utc).replace(tzinfo=None)):
                 is_premium = True
             elif expiry_time is not None:
                 await self.users.update_one({"id": user_id}, {"$set": {"expiry_time": None}})
 
+        import botcfg
+        limit = int(botcfg.get("daily_limit"))
+
         if is_premium:
             # Unlimited downloads, no need to touch the counters
-            return {"is_premium": True, "count": 0, "remaining": DAILY_DOWNLOAD_LIMIT}
+            return {"is_premium": True, "premium": True, "verified": False, "count": 0, "remaining": limit, "daily_limit": limit}
+
+        # ---- Verified (free access for a few hours after a shortener verification) ----
+        vu = user_data.get("verified_until") if user_data else None
+        if isinstance(vu, datetime.datetime) and vu > datetime.datetime.utcnow():
+            return {"is_premium": True, "premium": False, "verified": True, "count": 0, "remaining": limit, "daily_limit": limit}
 
         # ---- Free user: resolve / reset the daily counter ----
         count = user_data.get("daily_download_count", 0) if user_data else 0
@@ -269,9 +279,9 @@ class Database:
                 upsert=True
             )
 
-        remaining = DAILY_DOWNLOAD_LIMIT - count
+        remaining = limit - count
         remaining = remaining if remaining > 0 else 0
-        return {"is_premium": False, "count": count, "remaining": remaining}
+        return {"is_premium": False, "premium": False, "verified": False, "count": count, "remaining": remaining, "daily_limit": limit}
 
     async def reset_download_if_needed(self, user_id):
         """Resets the user's daily_download_count to 0 if last_download_reset was >= 24 hours ago."""
@@ -300,7 +310,7 @@ class Database:
     async def remaining_downloads(self, user_id):
         """Returns remaining downloads left today for the user. Premium users get DAILY_DOWNLOAD_LIMIT (unlimited)."""
         status = await self.get_download_status(user_id)
-        return DAILY_DOWNLOAD_LIMIT if status["is_premium"] else status["remaining"]
+        return status["daily_limit"] if status["is_premium"] else status["remaining"]
     
     # Daily Download Limit System function End👆👆
     # =========================================================
@@ -409,6 +419,59 @@ class Database:
         "expiry_time": {"$gt": datetime.datetime.now()}
         })
         return count
+
+    # ---------- verification (shortener) ----------
+    @staticmethod
+    def _today_ist():
+        return datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d')
+
+    async def verify_count_today(self, user_id):
+        u = await self.users.find_one({"id": int(user_id)}, {"verify_day": 1, "verify_count": 1})
+        if u and u.get("verify_day") == self._today_ist():
+            return int(u.get("verify_count", 0))
+        return 0
+
+    async def set_pending_start(self, user_id, data):
+        await self.users.update_one({"id": int(user_id)}, {"$set": {"pending_start": data}}, upsert=True)
+
+    async def pop_pending_start(self, user_id):
+        u = await self.users.find_one_and_update({"id": int(user_id)}, {"$unset": {"pending_start": ""}})
+        return u.get("pending_start") if u else None
+
+    async def create_verify_token(self, user_id, token, shortener_id, pending):
+        await self.tokens.delete_many({"user_id": int(user_id)})   # one open token per user
+        await self.tokens.insert_one({"token": token, "user_id": int(user_id), "sid": shortener_id,
+                                      "pending": pending, "created": datetime.datetime.utcnow()})
+
+    async def pop_verify_token(self, token, user_id=None):
+        q = {"token": token}
+        if user_id is not None:
+            q["user_id"] = int(user_id)
+        return await self.tokens.find_one_and_delete(q)
+
+    async def complete_verification(self, user_id, hours):
+        until = datetime.datetime.utcnow() + datetime.timedelta(hours=float(hours))
+        count = await self.verify_count_today(user_id) + 1
+        await self.users.update_one(
+            {"id": int(user_id)},
+            {"$set": {"verified_until": until, "verify_day": self._today_ist(), "verify_count": count}},
+            upsert=True)
+        return until
+
+    # ---------- user language ----------
+    async def set_user_lang(self, user_id, lang):
+        await self.col.update_one({'id': int(user_id)}, {'$set': {'lang': lang}})
+
+    async def get_user_lang(self, user_id):
+        u = await self.col.find_one({'id': int(user_id)}, {'lang': 1})
+        return u.get('lang') if u else None
+
+    async def count_users_by_lang(self):
+        """{lang_code or None: users}"""
+        out = {}
+        async for r in self.col.aggregate([{'$group': {'_id': '$lang', 'n': {'$sum': 1}}}]):
+            out[r['_id']] = r['n']
+        return out
 
     async def get_bot_setting(self, bot_id, setting_key, default_value):
         bot = await self.botcol.find_one({'id': int(bot_id)}, {setting_key: 1, '_id': 0})

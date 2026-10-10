@@ -14,6 +14,9 @@ from database.ia_filterdb import Media, Media2, MEDIA_DBS
 from database.users_chats_db import db
 from info import *
 from utils import temp
+import botcfg
+from deleter import delete_loop
+import payments
 from Script import script
 from plugins import web_server, check_expired_premium, keep_alive
 from dreamxbotz.Bot import dreamxbotz
@@ -108,9 +111,15 @@ async def dreamxbotz_start():
     temp.U_NAME = me.username
     temp.B_NAME = me.first_name
     temp.B_LINK = me.mention
-    temp.FORWARD_ALLOWED = await db.forward_allowed_status(me.id)  # global forward switch from DB
+    await botcfg.load()
+    try:
+        await db.pdel.create_index('at')
+    except Exception as e:
+        logging.warning(f'pdel index: {e}')
+    dreamxbotz.loop.create_task(delete_loop(dreamxbotz))
     dreamxbotz.username = '@' + me.username
-    dreamxbotz.loop.create_task(check_expired_premium(dreamxbotz))
+    await payments.ensure_indexes()
+    dreamxbotz.loop.create_task(payments.premium_loop(dreamxbotz))
     logging.info(f"{me.first_name} with Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")
     logging.info(LOG_STR)
     logging.info(script.LOGO)

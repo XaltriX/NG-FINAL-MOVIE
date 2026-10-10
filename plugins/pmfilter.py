@@ -1,5 +1,6 @@
 from pyrogram.errors import MessageNotModified
 from utils import get_size, is_subscribed, is_req_subscribed, group_setting_buttons, get_poster, temp, get_settings, get_time, save_group_settings, get_cap, imdb, is_check_admin, extract_request_content, log_error, clean_filename, generate_season_variations, clean_search_text, extract_caption_meta, brand_clean
+import botcfg
 import tracemalloc
 from rapidfuzz import process, fuzz
 from urllib.parse import quote_plus
@@ -11,6 +12,8 @@ from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerId
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, WebAppInfo
 from info import *
+from languages import get_lang, tr, btn as lbtn  # (btn is a local list name in this file)
+from languages.ui import start_text, start_markup
 from Script import script
 from pyrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
 from database.refer import referdb
@@ -23,6 +26,9 @@ import random
 import pytz
 from datetime import datetime, timedelta
 lock = asyncio.Lock()
+
+# callbacks owned by other plugins: this catch-all handler must not touch / answer them
+EXTERNAL_CB_PREFIXES = ("adm#", "adc#", "adp#", "adx#", "pr#", "vf#", "setlang#", "lang_menu")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -1082,6 +1088,8 @@ async def send_auto_delete(client, chat_id, text, reply_markup, seconds=60):
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     DreamxData = query.data
+    if DreamxData.startswith(EXTERNAL_CB_PREFIXES):
+        return  # handled by their own plugin (admin panel, language, premium, verify ...)
     try:
         link = await client.create_chat_invite_link(int(REQST_CHANNEL))
     except:
@@ -1179,7 +1187,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             btn = []
             chat = file_id.split("_")[0]
             settings = await get_settings(chat)
-            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
+            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS + botcfg.get('fsub_channels'))) 
             btn += await is_subscribed(client, query.from_user.id, fsub_channels)
             btn += await is_req_subscribed(client, query.from_user.id, AUTH_REQ_CHANNELS)
             if btn:
@@ -1496,87 +1504,44 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer(text=script.SINFO, show_alert=True)
 
     elif query.data == "start":
-        buttons = [[
-                    InlineKeyboardButton('🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
-                ],[
-                    InlineKeyboardButton(' ʜᴇʟᴘ 📢', callback_data='help'),
-                    InlineKeyboardButton(' ᴀʙᴏᴜᴛ 📖', callback_data='about')
-                ],[
-                    InlineKeyboardButton('ᴛᴏᴘ sᴇᴀʀᴄʜɪɴɢ ⭐', callback_data="topsearch"),
-                     InlineKeyboardButton('ᴜᴘɢʀᴀᴅᴇ 🎟', callback_data="premium_info"),
-                ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        current_time = datetime.now(pytz.timezone(TIMEZONE))
-        curr_time = current_time.hour        
-        if curr_time < 12:
-            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
-        elif curr_time < 17:
-            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
-        elif curr_time < 21:
-            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
-        else:
-            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
+        lang = await get_lang(query.from_user.id)
         try:
             await client.edit_message_media(
-                query.message.chat.id, 
-                query.message.id, 
+                query.message.chat.id,
+                query.message.id,
                 InputMediaPhoto(random.choice(PICS))
             )
-        except Exception as e:    
+        except Exception:
             pass
         await query.message.edit_text(
-            text=script.START_TXT.format(query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
-        await query.answer(MSG_ALRT)
-
-    elif query.data == "donation":
-        buttons = [[
-                InlineKeyboardButton('📸 Sᴇɴᴅ Dᴏɴᴀᴛᴇ Sᴄʀᴇᴇɴsʜᴏᴛ Hᴇʀᴇ', url=OWNER_LNK)
-            ],[
-                InlineKeyboardButton('⇍ ʙᴀᴄᴋ ⇏', callback_data='about')
-            ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.edit_text(text="● ◌ ◌")
-        await query.message.edit_text(text="● ● ◌")
-        await query.message.edit_text(text="● ● ●")
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await client.edit_message_media(
-            query.message.chat.id, 
-            query.message.id, 
-            InputMediaPhoto('https://graph.org/file/99eebf5dbe8a134f548e0.jpg')
-        )
-        await query.message.edit_text(
-            text=script.DREAMXBOTZ_DONATION.format(query.from_user.mention, QR_CODE, OWNER_UPI_ID),
-            reply_markup=reply_markup,
+            text=start_text(lang, query.from_user),
+            reply_markup=start_markup(lang, query.from_user.id),
             parse_mode=enums.ParseMode.HTML
         )
 
     elif query.data == "help":
-        buttons = [[
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ ⇋', callback_data='start')
-        ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
+        lang = await get_lang(query.from_user.id)
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(lbtn("btn_back_home", lang), callback_data='start')]])
         await query.message.edit_text(
-            text=script.HELP_TXT, 
+            text=tr("help_txt", lang),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML
         )
 
     elif query.data == "about":
+        lang = await get_lang(query.from_user.id)
         buttons = [[
             InlineKeyboardButton('‼️ ᴅɪꜱᴄʟᴀɪᴍᴇʀ ‼️', callback_data='disclaimer'),
             InlineKeyboardButton ('🪔 sᴏᴜʀᴄᴇ', callback_data='source'),
         ],[
-            InlineKeyboardButton('ᴅᴏɴᴀᴛɪᴏɴ 💰', callback_data='donation'), 
+            InlineKeyboardButton('ᴅᴏɴᴀᴛɪᴏɴ 💰', callback_data='donation'),
         ],[
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ ⇋', callback_data='start')
+            InlineKeyboardButton(lbtn("btn_back_home", lang), callback_data='start')
         ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_text(
-            text=script.ABOUT_TXT.format(temp.U_NAME, temp.B_NAME, OWNER_LNK),
-            reply_markup=reply_markup,
+            text=tr("about_txt", lang, bot_user=temp.U_NAME, bot_name=temp.B_NAME, owner=OWNER_LNK,
+                     support=SUPPORT_CHAT, brand=f"https://t.me/{NEW_BRAND}"),
+            reply_markup=InlineKeyboardMarkup(buttons),
             disable_web_page_preview=True,
             parse_mode=enums.ParseMode.HTML
         )
@@ -1905,6 +1870,8 @@ async def auto_filter(client, msg, spoll=False):
             # PART 3: DATABASE SEARCH & SPELL CHECK (Files dhoondna aur spelling janchalna)
             # -------------------------------------------------------------------------
             m = await message.reply_text(f'**•『 🔍 ɪ ᴀᴍ ꜱᴇᴀʀᴄʜɪɴɢ 』•** `{search}`', reply_to_message_id=message.id)
+            import stats
+            search = await stats.apply_alias(search)
             files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
             settings = await get_settings(message.chat.id)
             
@@ -2123,6 +2090,8 @@ async def old_auto_filter(client, msg, spoll=False):
             # 🔥 REMOVE SYMBOLS
             search = re.sub(r"[!@#$%^*()_+=\[\]{};\"<>?/\\|]", "", search)
             search = re.sub(r"\s+", " ", search).strip()
+            import stats
+            search = await stats.apply_alias(search)
             files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
             settings = await get_settings(message.chat.id)
             if not files:
@@ -2512,6 +2481,11 @@ async def ai_spell_check(chat_id, wrong_name):
 
 async def advantage_spell_chok(client, message):
     search = message.text
+    try:
+        import stats
+        await stats.record_missing(search, message.from_user.id if message.from_user else None)
+    except Exception:
+        pass
     query = re.sub(
         r"(?:"
         r"\bpl(i|e)*?(s|z+|ease|se|ese|(e+)s(e+)?)\b|"

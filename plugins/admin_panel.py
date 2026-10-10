@@ -23,6 +23,7 @@ from info import ADMINS, NEW_BRAND, OLD_BRAND_NAMES
 from database.users_chats_db import db
 from database.ia_filterdb import MEDIA_DBS
 from utils import temp, brand_clean, OLD_BRAND_MONGO_REGEX
+from languages import LANGS
 
 logger = logging.getLogger(__name__)
 
@@ -52,22 +53,28 @@ def _onoff(v):
 
 async def _main_page(client):
     bot_id = client.me.id
-    fwd = bool(temp.FORWARD_ALLOWED)
     pm = await db.pm_search_status(bot_id)
     mu = await db.movie_update_status(bot_id)
     text = (
         "<b>🛠 ADMIN PANEL</b>\n\n"
-        f"🔁 <b>Forward files</b> : {_onoff(fwd)}\n"
-        "   <i>ON = users can forward / save files (all groups)</i>\n\n"
+        "<b>🔁 Forwarding:</b> free users blocked, verified/premium allowed\n"
+        "<b>   (change in ⚙️ Settings)</b>\n\n"
         f"🔎 <b>PM search</b> : {_onoff(pm)}\n"
         f"🎬 <b>Movie update posts</b> : {_onoff(mu)}\n\n"
         "<i>Tap a button to toggle. Saved in the database.</i>"
     )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🔁 Forward: {_onoff(fwd)}", callback_data="adm#t#fwd")],
+        [InlineKeyboardButton("📊 Stats", callback_data="adx#stats"),
+         InlineKeyboardButton("🔍 Top missing", callback_data="adx#missing")],
+        [InlineKeyboardButton("⚙️ Settings", callback_data="adc#home"),
+         InlineKeyboardButton("💎 Premium", callback_data="adp#home")],
+        [InlineKeyboardButton("📢 Broadcast", callback_data="adx#bcast"),
+         InlineKeyboardButton("📡 Force-Sub", callback_data="adx#fsub")],
+        [InlineKeyboardButton("🔤 Search aliases", callback_data="adx#alias")],
         [InlineKeyboardButton(f"🔎 PM Search: {_onoff(pm)}", callback_data="adm#t#pm")],
         [InlineKeyboardButton(f"🎬 Movie Update: {_onoff(mu)}", callback_data="adm#t#mu")],
         [InlineKeyboardButton("⚙️ Group settings (ALL groups)", callback_data="adm#g")],
+        [InlineKeyboardButton("🌐 Languages (users)", callback_data="adm#lang")],
         [InlineKeyboardButton("🧹 Fix old data", callback_data="adm#fix")],
         [InlineKeyboardButton("🔄 Refresh", callback_data="adm#home"),
          InlineKeyboardButton("❌ Close", callback_data="adm#close")],
@@ -88,6 +95,24 @@ async def _groups_page():
     lines.append(f"\n<i>Total groups: {total}. A button changes that setting in every group.</i>")
     rows.append([InlineKeyboardButton("⬅️ Back", callback_data="adm#home")])
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def _lang_page():
+    counts = await db.count_users_by_lang()
+    total = sum(counts.values()) or 1
+    lines = ["<b>🌐 USERS BY LANGUAGE</b>\n"]
+    ranked = sorted(LANGS, key=lambda x: -counts.get(x[0], 0))
+    for code, name, flag in ranked:
+        n = counts.get(code, 0)
+        lines.append(f"{flag} <b>{name}</b> : <code>{n}</code>  ({n * 100 // total}%)")
+    none = counts.get(None, 0)
+    lines.append(f"\n⏳ <b>Not chosen yet</b> : <code>{none}</code>")
+    lines.append(f"👥 <b>Total users</b> : <code>{sum(counts.values())}</code>")
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data="adm#lang")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="adm#home")],
+    ])
+    return "\n".join(lines), kb
 
 
 def _fix_page():
@@ -208,6 +233,16 @@ async def admin_panel_cb(client, query):
         await query.answer()
         return await query.message.delete()
 
+    if action == "open":   # from the /start menu (that message is a photo, so open the panel as a new message)
+        await query.answer()
+        text, kb = await _main_page(client)
+        return await query.message.reply_text(text, reply_markup=kb, disable_web_page_preview=True)
+
+    if action == "lang":
+        await query.answer()
+        text, kb = await _lang_page()
+        return await _safe_edit(query.message, text, kb)
+
     if action == "home":
         await query.answer()
         text, kb = await _main_page(client)
@@ -215,12 +250,7 @@ async def admin_panel_cb(client, query):
 
     if action == "t":
         key = parts[2]
-        if key == "fwd":
-            new = not bool(temp.FORWARD_ALLOWED)
-            temp.FORWARD_ALLOWED = new
-            await db.update_forward_allowed(bot_id, new)
-            toast = f"Forward {_onoff(new)}"
-        elif key == "pm":
+        if key == "pm":
             new = not await db.pm_search_status(bot_id)
             await db.update_pm_search_status(bot_id, new)
             toast = f"PM search {_onoff(new)}"

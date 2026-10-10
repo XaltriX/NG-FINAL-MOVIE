@@ -1,4 +1,5 @@
 import os
+import botcfg
 import re, sys
 import json
 import base64
@@ -19,6 +20,12 @@ from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
 from database.ia_filterdb import Media, Media2, MEDIA_DBS, delete_file_by_id, delete_files_by_query, get_file_details, unpack_new_file_id, get_bad_files, get_cover_url, backfill_media_type
 from database.users_chats_db import db
 from info import *
+from languages import LANG_PICK_TEXT, get_lang_raw, get_lang, tr
+import verifylib
+import payments
+from premium_ui import send_premium_menu
+from sender import gate, deliver, send_remaining
+from languages.ui import lang_picker_markup, send_start
 from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename, extract_caption_meta, enforce_daily_limit, build_file_caption, get_protect_content, brand_clean
 
 
@@ -51,128 +58,39 @@ async def start(client, message):
             await client.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, "Unknown"))       
             await db.add_chat(message.chat.id, message.chat.title)
         return 
-    if not await db.is_user_exist(message.from_user.id):
+    is_new_user = not await db.is_user_exist(message.from_user.id)
+    if is_new_user:
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
-    if len(message.command) != 2:
-        buttons = [[
-                    InlineKeyboardButton('🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
-                ],[
-                    InlineKeyboardButton('• ʜᴇʟᴘ 📢', callback_data='help'),
-                    InlineKeyboardButton('• ᴀʙᴏᴜᴛ 📖 •', callback_data='about')
-                ],[
-                    InlineKeyboardButton('⭐ ᴛᴏᴘ sᴇᴀʀᴄʜɪɴɢ ⭐', callback_data="topsearch"),
-                    InlineKeyboardButton('• ᴜᴘɢʀᴀᴅᴇ ᴀᴄᴄᴏᴜɴᴛ 🎟', callback_data="premium_info"),
-                ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        current_time = datetime.now(pytz.timezone(TIMEZONE))
-        curr_time = current_time.hour        
-        if curr_time < 12:
-            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
-        elif curr_time < 17:
-            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
-        elif curr_time < 21:
-            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
-        else:
-            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
-        m=await message.reply_text("⏳")
-        await asyncio.sleep(0.4)
-        await m.delete()        
-        await message.reply_photo(
-            photo=random.choice(PICS),
-            caption=script.START_TXT.format(message.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
-        return
-
-    if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
-        buttons = [[
-                    InlineKeyboardButton('🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
-                ],[
-                    InlineKeyboardButton('• ʜᴇʟᴘ 📢 •', callback_data='help'),
-                    InlineKeyboardButton('• ᴀʙᴏᴜᴛ 📖 •', callback_data='about')
-                ],[
-                    InlineKeyboardButton('⭐ ᴛᴏᴘ sᴇᴀʀᴄʜɪɴɢ ⭐', callback_data="topsearch"),
-                    InlineKeyboardButton('• ᴜᴘɢʀᴀᴅᴇ ᴀᴄᴄᴏᴜɴᴛ 🎟', callback_data="premium_info"),
-                ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        current_time = datetime.now(pytz.timezone(TIMEZONE))
-        curr_time = current_time.hour        
-        if curr_time < 12:
-            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
-        elif curr_time < 17:
-            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
-        elif curr_time < 21:
-            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
-        else:
-            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
-        m=await message.reply_text("⏳")
-        await asyncio.sleep(0.4)
-        await m.delete()        
-        await message.reply_photo(
-            photo=random.choice(PICS),
-            caption=script.START_TXT.format(message.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
+    if len(message.command) != 2 or message.command[1] in ["subscribe", "error", "okay", "help"]:
+        lang_raw = await get_lang_raw(message.from_user.id)
+        if lang_raw is None:
+            # first time: ask the language (menu is shown right after the choice)
+            await message.reply_text(LANG_PICK_TEXT, reply_markup=lang_picker_markup(), parse_mode=enums.ParseMode.HTML)
+            return
+        await send_start(client, message.from_user, message.chat.id, lang_raw)
         return
     if message.command[1].startswith("reff_"):
+        # refer link: only a brand-new user counts; the reward comes after he gets his first file
         try:
-            user_id = int(message.command[1].split("_")[1])
+            referrer = int(message.command[1].split("_", 1)[1])
         except ValueError:
-            await message.reply_text("Invalid refer!")
-            return
-        if user_id == message.from_user.id:
-            await message.reply_text("Hᴇʏ Dᴜᴅᴇ, Yᴏᴜ Cᴀɴ'ᴛ Rᴇғᴇʀ Yᴏᴜʀsᴇʟғ 🤣!\n\nsʜᴀʀᴇ ʟɪɴᴋ ʏᴏᴜʀ ғʀɪᴇɴᴅ ᴀɴᴅ ɢᴇᴛ 10 ʀᴇғᴇʀʀᴀʟ ᴘᴏɪɴᴛ ɪғ ʏᴏᴜ ᴀʀᴇ ᴄᴏʟʟᴇᴄᴛɪɴɢ 100 ʀᴇғᴇʀʀᴀʟ ᴘᴏɪɴᴛs ᴛʜᴇɴ ʏᴏᴜ ᴄᴀɴ ɢᴇᴛ 1 ᴍᴏɴᴛʜ ғʀᴇᴇ ᴘʀᴇᴍɪᴜᴍ ᴍᴇᴍʙᴇʀsʜɪᴘ.")
-            return
-        if await referdb.is_user_in_list(message.from_user.id):
-            await message.reply_text("Yᴏᴜ ʜᴀᴠᴇ ʙᴇᴇɴ ᴀʟʀᴇᴀᴅʏ ɪɴᴠɪᴛᴇᴅ ❗")
-            return
-        if await db.is_user_exist(message.from_user.id): 
-            await message.reply_text("‼️ Yᴏᴜ Hᴀᴠᴇ Bᴇᴇɴ Aʟʀᴇᴀᴅʏ Iɴᴠɪᴛᴇᴅ ᴏʀ Jᴏɪɴᴇᴅ")
-            return 
-        try:
-            uss = await client.get_users(user_id)
-        except Exception:
-            return             
-        await referdb.add_user(message.from_user.id)
-        fromuse = await referdb.get_refer_points(user_id) + 10
-        if fromuse == 100:
-            await referdb.add_refer_points(user_id, 0) 
-            await message.reply_text(f"🎉 𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 𝟭𝟬 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞ {uss.mention}!")                    
-            await message.reply_text(user_id, f"You have been successfully invited by {message.from_user.mention}!")         
-            seconds = 2592000
-            if seconds > 0:
-                expiry_time = datetime.now(pytz.utc) + timedelta(seconds=seconds)
-                user_data = {"id": user_id, "expiry_time": expiry_time}  # Using "id" instead of "user_id"  
-                await db.update_user(user_data)  # Use the update_user method to update or insert user data                    
-                await client.send_message(
-                chat_id=user_id,
-                text=f"<b>Hᴇʏ {uss.mention}\n\nYᴏᴜ ɢᴏᴛ 1 ᴍᴏɴᴛʜ ᴘʀᴇᴍɪᴜᴍ sᴜʙsᴄʀɪᴘᴛɪᴏɴ ʙʏ ɪɴᴠɪᴛɪɴɢ 10 ᴜsᴇʀs ❗", disable_web_page_preview=True              
-                )
-            for admin in ADMINS:
-                await client.send_message(chat_id=admin, text=f"Sᴜᴄᴄᴇss ғᴜʟʟʏ ᴛᴀsᴋ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ʙʏ ᴛʜɪs ᴜsᴇʀ:\n\nuser Nᴀᴍᴇ: {uss.mention}\n\nUsᴇʀ ɪᴅ: {uss.id}!")        
+            referrer = 0
+        if is_new_user and referrer:
+            await payments.refer_register(referrer, message.from_user.id)
+        lang_raw = await get_lang_raw(message.from_user.id)
+        if lang_raw is None:
+            await message.reply_text(LANG_PICK_TEXT, reply_markup=lang_picker_markup(), parse_mode=enums.ParseMode.HTML)
         else:
-            await referdb.add_refer_points(user_id, fromuse)
-            await message.reply_text(f"You have been successfully invited by {uss.mention}!")
-            await client.send_message(user_id, f"𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 𝟭𝟬 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞{message.from_user.mention}!")
+            await send_start(client, message.from_user, message.chat.id, lang_raw)
         return
 
     if len(message.command) == 2 and message.command[1] in ["premium"]:
-        buttons = [[
-                    InlineKeyboardButton('📲 ꜱᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ ꜱᴄʀᴇᴇɴꜱʜᴏᴛ 📲', url=OWNER_LNK)
-                  ],[
-                    InlineKeyboardButton('❌ ᴄʟᴏꜱᴇ ❌', callback_data='close_data')
-                  ]]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await message.reply_photo(
-            photo=(SUBSCRIPTION),
-            caption=script.PREPLANS_TXT.format(message.from_user.mention, OWNER_UPI_ID, QR_CODE),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
-        return  
+        await send_premium_menu(client, message.chat.id, message.from_user.id, await get_lang(message.from_user.id))
+        return
+
+    if message.command[1].startswith("vf_"):
+        return await verifylib.finish_verification(client, message, message.command[1][3:])
 
     if len(message.command) == 2 and message.command[1].startswith('getfile'):
         movies = message.command[1].split("-", 1)[1] 
@@ -197,7 +115,7 @@ async def start(client, message):
             btn = []
             chat = grp_id
             settings      = await get_settings(chat)
-            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
+            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS + botcfg.get('fsub_channels'))) 
 
             if fsub_channels:
                 btn += await is_subscribed(client, message.from_user.id, fsub_channels)
@@ -231,163 +149,53 @@ async def start(client, message):
 
 
     user_id = m.from_user.id
+    lang = await get_lang(user_id)
 
+    # ---------------- many files at once ----------------
     if data.startswith("allfiles"):
-        try:
-            files = temp.GETALL.get(file_id)
-            if not files:
-                return await message.reply('<b><i>ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !</b></i>')
-
-            # --- Daily Download Limit System: check BEFORE the batch starts sending ---
-            dl_status = await db.get_download_status(message.from_user.id)
-            is_premium_user = dl_status["is_premium"]
-            if is_premium_user:
-                files_to_send = files
-            else:
-                if dl_status["remaining"] <= 0:
-                    # Limit already used up -> send the 🚫 message + buttons and stop, no files sent
-                    await enforce_daily_limit(client, message)
-                    return
-                # Show remaining limit BEFORE the files are sent
-                await client.send_message(
-                    chat_id=message.from_user.id,
-                    text=script.REMAINING_LIMIT_TXT.format(dl_status["remaining"], DAILY_DOWNLOAD_LIMIT),
-                    parse_mode=enums.ParseMode.HTML
-                )
-                # Only send as many files as the free user still has remaining today
-                files_to_send = files[:dl_status["remaining"]]
-
-            filesarr = []
-            for file in files_to_send:
-                f_id = file.file_id
-                # Caption ALWAYS from Script.py (old DB files too); old channel names replaced.
-                f_caption = build_file_caption(file.file_name, file.file_size, file.caption)
-                btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-                cover_url = getattr(file, 'cover', None) if COVERX else None
-
-                # FloodWait fix: retry up to 3 times if Telegram asks us to slow down,
-                # instead of letting the whole batch crash out on the first FloodWait.
-                msg = None
-                for attempt in range(3):
-                    try:
-                        msg = await client.send_cached_media(
-                            chat_id=message.from_user.id,
-                            file_id=f_id,
-                            caption=f_caption,
-                            protect_content=get_protect_content(),
-                            reply_markup=InlineKeyboardMarkup(btn),
-                            cover=cover_url
-                        )
-                        break
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value + 1)
-
-                if msg is not None:
-                    filesarr.append(msg)
-                await asyncio.sleep(0.3) # यहाँ लूप खत्म हो रहा है
-
-            # --- Daily Download Limit System: bulk-increment by files actually sent (free users only) ---
-            if not is_premium_user and filesarr:
-                await db.increase_download(message.from_user.id, len(filesarr))
-
-            # If the batch got truncated due to the limit, tell the user now (0 remaining at this point)
-            if not is_premium_user and len(files_to_send) < len(files):
-                await enforce_daily_limit(client, message)
-
-            # --- अब ये लाइनें FOR LOOP के बाहर हैं (4 स्पेस पीछे) ---
-            if filesarr:
-                k = await client.send_message(chat_id=message.from_user.id, text=script.DEL_MSG.format(get_time(DELETE_TIME)), parse_mode=enums.ParseMode.HTML)
-                await asyncio.sleep(DELETE_TIME)
-                for x in filesarr:
-                    try: await x.delete()
-                    except: pass
-                await k.edit_text("<b>ʏᴏᴜʀ ᴀʟʟ ᴠɪᴅᴇᴏꜱ/ꜰɪʟᴇꜱ ᴀʀᴇ ᴅᴇʟᴇᴛᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ !!\nᴋɪɴᴅʟʏ ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ 😉</b>")
-
-            return # फंक्शन यहाँ खत्म होगा
-
-        except Exception as e:
-            logger.exception(e)
+        files = temp.GETALL.get(file_id)
+        if not files:
+            return await message.reply(tr("no_file", lang), parse_mode=enums.ParseMode.HTML)
+        ok, policy, st = await gate(client, user_id, lang, pending=data)
+        if not ok:
             return
-
-
-    user = message.from_user.id
-    files_ = await file_details_task
-    settings = await get_settings(int(grp_id))
-    if not files_:
-        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("utf-8")).split("_", 1)
-        # --- Daily Download Limit System: check before sending the file ---
-        allowed, is_premium_user, remaining = await enforce_daily_limit(client, message)
-        if not allowed:
-            return
-        # Show remaining limit BEFORE the file is sent
-        if not is_premium_user:
-            await message.reply_text(
-                script.REMAINING_LIMIT_TXT.format(max(remaining - 1, 0), DAILY_DOWNLOAD_LIMIT),
-                parse_mode=enums.ParseMode.HTML
-            )
-        try:
-            btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-            msg = await client.send_cached_media(
-                chat_id=message.from_user.id,
-                file_id=file_id,
-                protect_content=get_protect_content(),
-                reply_markup=InlineKeyboardMarkup(btn))
-
-            if not is_premium_user:
-                await db.increase_download(message.from_user.id)
-
-            filetype = msg.media
-            file = getattr(msg, filetype.value)
-            f_caption = build_file_caption(file.file_name, file.file_size)
-            await msg.edit_caption(
-                f_caption,
-                reply_markup=InlineKeyboardMarkup(btn)
-            )
-            k = await msg.reply(script.DEL_MSG.format(get_time(DELETE_TIME)),
-            quote=True, parse_mode=enums.ParseMode.HTML
-            )
-            await asyncio.sleep(DELETE_TIME)
-            await msg.delete()
-            await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\nᴋɪɴᴅʟʏ ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ 😉</b>")
-            return
-        except Exception as e:
-            logger.exception(e)
-            pass
-        return await message.reply('ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !')
-
-    # --- Daily Download Limit System: check before sending the file ---
-    allowed, is_premium_user, remaining = await enforce_daily_limit(client, message)
-    if not allowed:
+        to_send = files if not policy["free"] else files[:st["remaining"]]
+        items = [{
+            "file_id": f.file_id,
+            "caption": build_file_caption(f.file_name, f.file_size, f.caption),
+            "cover": getattr(f, "cover", None) if COVERX else None,
+        } for f in to_send]
+        sent = await deliver(client, user_id, items, lang, policy)
+        if policy["free"]:
+            await send_remaining(client, user_id, lang, st, len(sent))
+            if len(to_send) < len(files):          # batch was cut by the daily limit
+                await gate(client, user_id, lang, pending=data)
         return
 
-    # Show remaining limit BEFORE the file is sent
-    if not is_premium_user:
-        await message.reply_text(
-            script.REMAINING_LIMIT_TXT.format(max(remaining - 1, 0), DAILY_DOWNLOAD_LIMIT),
-            parse_mode=enums.ParseMode.HTML
-        )
+    # ---------------- one file ----------------
+    files_ = await file_details_task
+    if files_:
+        f = files_[0]
+        item = {
+            "file_id": file_id,
+            "caption": build_file_caption(f.file_name, f.file_size, f.caption),
+            "cover": getattr(f, "cover", None) if COVERX else None,
+        }
+    else:                                          # old link for a file that is not in the DB
+        try:
+            _, real_id = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8").split("_", 1)
+        except Exception:
+            return await message.reply(tr("no_file", lang), parse_mode=enums.ParseMode.HTML)
+        item = {"file_id": real_id, "caption": "", "legacy": True}
 
-    files = files_[0]
-    f_caption = build_file_caption(files.file_name, files.file_size, files.caption)
-    btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-    cover_url = getattr(files, 'cover', None) if COVERX else None
-    msg = await client.send_cached_media(
-        chat_id=message.from_user.id,
-        file_id=file_id,
-        caption=f_caption,
-        protect_content=get_protect_content(),
-        reply_markup=InlineKeyboardMarkup(btn),
-        cover=cover_url
-    )
-    if not is_premium_user:
-        await db.increase_download(message.from_user.id)
-    k = await msg.reply(script.DEL_MSG.format(get_time(DELETE_TIME)),
-            quote=True, parse_mode=enums.ParseMode.HTML
-    )     
-    await asyncio.sleep(DELETE_TIME)
-    await msg.delete()
-    await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\nᴋɪɴᴅʟʏ ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ 😉</b>")
-    return
+    ok, policy, st = await gate(client, user_id, lang, pending=data)
+    if not ok:
+        return
+    sent = await deliver(client, user_id, [item], lang, policy)
+    if not sent:
+        return await message.reply(tr("no_file", lang), parse_mode=enums.ParseMode.HTML)
+    if policy["free"]:
+        await send_remaining(client, user_id, lang, st, len(sent))
 
 
 @Client.on_message(filters.command('logs') & filters.user(ADMINS))
