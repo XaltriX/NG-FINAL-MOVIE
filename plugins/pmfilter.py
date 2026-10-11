@@ -10,7 +10,16 @@ from database.ia_filterdb import Media, Media2, MEDIA_DBS, delete_file_by_id, ge
 from database.config_db import mdb
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid, ChatAdminRequired, UserNotParticipant
 from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, WebAppInfo
+from pyrogram.types import InlineKeyboardMarkup as _IKM, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, WebAppInfo
+import card
+import time as _t
+
+
+class InlineKeyboardMarkup(_IKM):
+    """Result-card keyboards get restyled automatically (see card.py)."""
+    def __init__(self, inline_keyboard):
+        super().__init__(card.restyle(inline_keyboard))
+
 from info import *
 from languages import get_lang, tr, btn as lbtn  # (btn is a local list name in this file)
 from languages.ui import start_text, start_markup
@@ -28,7 +37,7 @@ from datetime import datetime, timedelta
 lock = asyncio.Lock()
 
 # callbacks owned by other plugins: this catch-all handler must not touch / answer them
-EXTERNAL_CB_PREFIXES = ("adm#", "adc#", "adp#", "adx#", "pr#", "rq#", "acc#", "vf#", "setlang#", "lang_menu")
+EXTERNAL_CB_PREFIXES = ("episodes#", "fe#", "adm#", "adc#", "adp#", "adx#", "pr#", "rq#", "acc#", "vf#", "setlang#", "lang_menu")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -748,6 +757,7 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^fs#"))
 async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
+    _t0s = _t.perf_counter()
     _, season_tag, key = query.data.split("#")
     search = FRESH.get(key).replace("_", " ")
     season_tag = season_tag.lower()
@@ -831,13 +841,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
                 "↭  ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟᴇ ↭", callback_data="pages")]
         )
     if not settings.get("button"):
-        curr_time = datetime.now(pytz.timezone("Asia/Kolkata")).time()
-        time_difference = timedelta(
-            hours=curr_time.hour,
-            minutes=curr_time.minute,
-            seconds=curr_time.second + curr_time.microsecond / 1_000_000,
-        )
-        remaining_seconds = f"{time_difference.total_seconds():.2f}"
+        remaining_seconds = "{:.2f}".format(_t.perf_counter() - _t0s)
         dreamx_title = clean_search_text(search_final)
         cap = await get_cap(settings, remaining_seconds, files, query, total_results, dreamx_title, offset=1)
         try:
@@ -1784,6 +1788,7 @@ def normalize_episode(search):
 #______________________________________________________AUTO_FILTER____________________________________________________________
 
 async def auto_filter(client, msg, spoll=False):
+    _t0 = _t.perf_counter()
     # PART 1: MESSAGE VALIDATION (Message ko check karna ki chalana hai ya nahi)
     # -------------------------------------------------------------------------
     if not spoll:
@@ -1937,51 +1942,16 @@ async def auto_filter(client, msg, spoll=False):
     else:
         btn.append([InlineKeyboardButton(text="↭ ɴᴏ ᴍᴏʀᴇ ᴘᴀɢᴇꜱ ᴀᴠᴀɪʟᴀʙʟे ↭", callback_data="pages")])
 
-    # IMDb Poster check karna
-    imdb = await get_poster(search, file=(files[0]).file_name) if settings.get("imdb") else None
-
-    # -------------------------------------------------------------------------
-    # PART 5: TIME DIFFERENCE & CAPTION (Time aur text message banana)
-    # -------------------------------------------------------------------------
-    # ⏰ FIX: Purana timedelta math hata kar simple accurate time system lagaya
-    cur_time = datetime.now(pytz.timezone('Asia/Kolkata'))
-    curr_datetime = cur_time.replace(hour=msg.date.hour, minute=msg.date.minute, second=msg.date.second) if hasattr(msg, 'date') else cur_time
-    remaining_seconds = "{:.2f}".format((cur_time - curr_datetime).total_seconds())
-    if float(remaining_seconds) < 0: 
-        remaining_seconds = "0.10"  # Midnight crossover error handler
-
-    TEMPLATE = brand_clean(settings.get('template', script.IMDB_TEMPLATE_TXT))
-
-    if imdb:
-        cap = TEMPLATE.format(
-            query=search, title=imdb['title'], votes=imdb['votes'], aka=imdb["aka"],
-            seasons=imdb["seasons"], box_office=imdb['box_office'], localized_title=imdb['localized_title'],
-            kind=imdb['kind'], imdb_id=imdb["imdb_id"], cast=imdb["cast"], runtime=imdb["runtime"],
-            countries=imdb["countries"], certificates=imdb["certificates"], languages=imdb["languages"],
-            director=imdb["director"], writer=imdb["writer"], producer=imdb["producer"],
-            composer=imdb["composer"], cinematographer=imdb["cinematographer"], music_team=imdb["music_team"],
-            distributors=imdb["distributors"], release_date=imdb['release_date'], year=imdb['year'],
-            genres=imdb['genres'], poster=imdb['poster'], plot=imdb['plot'], rating=imdb['rating'],
-            url=imdb['url'], **locals()
-        )
-        Temp.IMDB_CAP[message.from_user.id] = cap
-        
-        if not settings.get('button'):
-            cap += "\n📂 <b><u>𝒀𝒐𝒖𝒓 𝑭𝒊𝒍𝒆𝒔 𝑨𝒓𝒆 𝑹𝒆𝒂𝒅𝒚</u></b> 👇\n\n"
-            for idx, file in enumerate(files, start=1):
-                cap += f"<b>{idx}. <a href='https://telegram.me/{temp.U_NAME}?start=file_{message.chat.id}_{file.file_id}'>[{get_size(file.file_size)}] {clean_filename(file.file_name)}</a></b>\n\n"
-            cap = cap.strip() + f"\n\n───────────────────\n\n<b>{script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip()}</b>"    
-    else:
-        # NoneType handle karne ke liye variable safety check
-        mention_user = message.from_user.mention if message.from_user else "User"
-        chat_title = message.chat.title or getattr(temp, 'B_LINK', None) or 'ᴅʀᴇᴀᴍxʙᴏᴛᴢ'
-        
-        cap = f"<b>🏷 ᴛɪᴛʟᴇ : <code>{search}</code>\n🧱 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ : <code>{total_results}</code>\n⏰ ʀᴇsᴜʟᴛ ɪɴ : <code>{remaining_seconds} sᴇᴄᴏɴᴅs</code>\n<blockquote>🌿 ᴍᴀɪɴᴛᴀɪɴᴇᴅ ʙʏ : ᴅᴇᴠᴇʟᴏᴘᴇʀ_ʙᴏʏ™(𝙉𝙚𝙤𝙣𝙂𝙝𝙤𝙨𝙩😝)</blockquote>\n📝 ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ : {mention_user}\n⚜️ ᴘᴏᴡᴇʀᴇᴅ ʙʏ : ⚡ {chat_title} \n\n📂 <b><u>𝒀𝒐𝒖𝒓 𝑭𝒊𝒍𝒆𝒔 𝑨𝒓𝒆 𝑹𝒆𝒂𝒅𝒚</u></b> 👇 \n\n</b>"
-
-        if not settings.get('button'):
-            for idx, file in enumerate(files, start=1):
-                cap += f"<b>{idx}. <a href='https://telegram.me/{temp.U_NAME}?start=file_{message.chat.id}_{file.file_id}'>[{get_size(file.file_size)}] {clean_filename(file.file_name)}</a></b>\n\n"
-            cap = cap.strip() + f"\n\n───────────────────\n<b>{script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip()}</b>"
+    imdb = None
+    remaining_seconds = "{:.2f}".format(_t.perf_counter() - _t0)
+    mention_user = message.from_user.mention if message.from_user else "User"
+    cap = card.build_cap(
+        clean_search_text(search), files, total_results, remaining_seconds, mention_user,
+        message.chat.id, temp.U_NAME, 1, get_size, clean_filename,
+        footer=script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip(),
+    )
+    if settings.get('button'):
+        cap = cap.split("<blockquote>")[0].rstrip() + f"\n\n⚜️ <b>Powered By NeonGhost Network</b>"
 
     # -------------------------------------------------------------------------
     # PART 6: AUTO DELETE & SENDING (Message bhejna aur automatic delete karna)
