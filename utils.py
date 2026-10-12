@@ -762,18 +762,15 @@ def get_protect_content():
     return not bool(temp.FORWARD_ALLOWED)
 
 def build_file_caption(raw_file_name, file_size_bytes=None, db_caption=None):
-    """Caption for every file sent. ALWAYS Script.py CAPTION (old DB files too); old names replaced."""
+    """Caption for every file sent (design B, minimal). Old brand names are stripped from the name first."""
+    import card
     raw_file_name = brand_clean(raw_file_name or "")
-    title = clean_filename(raw_file_name) if raw_file_name else ""
     size = get_size(file_size_bytes) if file_size_bytes else ""
     try:
-        meta = extract_caption_meta(raw_file_name)
-        caption = CUSTOM_FILE_CAPTION.format(file_name=title or "", file_size=size or "",
-                                             file_caption=brand_clean(db_caption) or "", **meta)
+        return brand_clean(card.file_caption(raw_file_name, size, f"https://t.me/{NEW_BRAND}"))
     except Exception as e:
         logger.exception(e)
-        caption = f"<b>{title}</b>\n\n<b>Powered By @{NEW_BRAND}</b>"
-    return brand_clean(caption)
+        return f"<b>{clean_filename(raw_file_name)}</b>\n\n<b>Powered By @{NEW_BRAND}</b>"
 
 #CLEAN_FILENAME____🅰️NKIT_Ⓜ️EENA______
 
@@ -1385,10 +1382,14 @@ def clean_search_text(search_raw: str) -> str:
 async def get_cap(settings, remaining_seconds, files, query, total_results, search, offset=0):
     try:
         import card
+        try:
+            _sa = (await db.get_download_status(query.from_user.id))["is_premium"]
+        except Exception:
+            _sa = False
         return card.build_cap(
             search, files, total_results, remaining_seconds, query.from_user.mention,
             query.message.chat.id, temp.U_NAME, max(int(offset), 1), get_size, clean_filename,
-            footer=script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip(),
+            footer=script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip(), send_all=_sa,
         )
     except Exception as e:
         logging.error(f"Error in get_cap: {e}")

@@ -1142,6 +1142,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
     elif query.data.startswith("sendfiles"):
         clicked = query.from_user.id
+        if not await _can_send_all(clicked):
+            return await query.answer(tr("sendall_locked", await get_lang(clicked)), show_alert=True)
         ident, key = query.data.split("#")
         settings = await get_settings(query.message.chat.id)
         try:
@@ -1787,6 +1789,13 @@ def normalize_episode(search):
 # so there's exactly one implementation and both stay in sync.
 #______________________________________________________AUTO_FILTER____________________________________________________________
 
+async def _can_send_all(uid):
+    try:
+        return bool((await db.get_download_status(uid))["is_premium"])
+    except Exception:
+        return False
+
+
 async def auto_filter(client, msg, spoll=False):
     _t0 = _t.perf_counter()
     # PART 1: MESSAGE VALIDATION (Message ko check karna ki chalana hai ya nahi)
@@ -1949,6 +1958,7 @@ async def auto_filter(client, msg, spoll=False):
         clean_search_text(search), files, total_results, remaining_seconds, mention_user,
         message.chat.id, temp.U_NAME, 1, get_size, clean_filename,
         footer=script.DEL_MSG_2.format(get_time(DELETE_TIME)).lstrip(),
+        send_all=await _can_send_all(message.from_user.id if message.from_user else 0),
     )
     if settings.get('button'):
         cap = cap.split("<blockquote>")[0].rstrip() + f"\n\n⚜️ <b>Powered By NeonGhost Network</b>"

@@ -101,6 +101,18 @@ async def start(client, message):
         raise StopPropagation
 
     data = message.command[1]
+    if data.startswith("sh_"):          # shared file link: remember the referrer, then continue as a normal file link
+        try:
+            from sender import _shares
+            sh = await _shares.find_one({"code": data[3:]})
+        except Exception:
+            sh = None
+        if not sh:
+            return await message.reply_text(tr("no_file", await get_lang(message.from_user.id)), parse_mode=enums.ParseMode.HTML)
+        if is_new_user and sh.get("ref"):
+            await payments.refer_register(sh["ref"], message.from_user.id)
+        data = f"file_0_{sh['file_id']}"
+        message.command = ["start", data]
     if await get_lang_raw(message.from_user.id) is None:
         # old user who never chose a language: ask first, then give him his file
         await db.users.update_one({"id": message.from_user.id}, {"$set": {"pending_lang_start": data}}, upsert=True)

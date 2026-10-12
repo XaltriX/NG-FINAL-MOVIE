@@ -13,6 +13,7 @@ _LANGS = ["Hindi", "English", "Tamil", "Telugu", "Malayalam", "Kannada", "Bengal
 _KEYCAP = {1: "1️⃣", 2: "2️⃣", 3: "3️⃣", 4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
 
 _last_series = [None]   # set by build_cap, consumed by restyle (same event-loop tick)
+_last_sendall = [True]  # Send All only for premium/verified viewers
 
 
 def is_series(search, names):
@@ -35,8 +36,12 @@ def _tags(name):
     return parts
 
 
-def build_cap(search, files, total, secs, mention, chat_id, uname, start, size_fn, name_fn, footer=""):
-    title = html.escape(str(search or "").strip()).upper()
+def build_cap(search, files, total, secs, mention, chat_id, uname, start, size_fn, name_fn, footer="", send_all=True):
+    title = str(search or "").strip().upper()
+    if len(title) > 60:
+        title = title[:59].rstrip() + "…"
+    title = html.escape(title)
+    _last_sendall[0] = bool(send_all)
     _last_series[0] = is_series(search, [f.file_name for f in files])
     try:
         secs_txt = f"{float(secs):.2f}"
@@ -45,9 +50,7 @@ def build_cap(search, files, total, secs, mention, chat_id, uname, start, size_f
     except Exception:
         secs_txt = "0.50"
     cap = (
-        "<b>╔═══════════════════╗\n"
-        f"  🎬  {ubold(title)}\n"
-        "╚═══════════════════╝</b>\n"
+        f"<blockquote><b>🎬  {ubold(title)}</b></blockquote>\n"
         f"<b>📁 {ubold(str(total))} {ubold('Files')}   ⚡ {ubold(secs_txt)}{ubold('s')}   👤 {mention}</b>\n\n"
     )
     for i, f in enumerate(files, start=int(start)):
@@ -63,13 +66,14 @@ def build_cap(search, files, total, secs, mention, chat_id, uname, start, size_f
     return cap
 
 
-def _header(key, series):
+def _header(key, series, send_all=True):
     rows = [[InlineKeyboardButton("🎞 " + ubold("Quality"), callback_data=f"qualities#{key}"),
              InlineKeyboardButton("🌐 " + ubold("Language"), callback_data=f"languages#{key}")]]
     if series:
         rows.append([InlineKeyboardButton("📺 " + ubold("Season"), callback_data=f"seasons#{key}"),
                      InlineKeyboardButton("🔢 " + ubold("Episode"), callback_data=f"episodes#{key}")])
-    rows.append([InlineKeyboardButton("📦 " + ubold("Send All"), callback_data=f"sendfiles#{key}")])
+    if send_all:
+        rows.append([InlineKeyboardButton("📦 " + ubold("Send All"), callback_data=f"sendfiles#{key}")])
     return rows
 
 
@@ -105,6 +109,8 @@ def restyle(rows):
         key = qc.split("#", 1)[1]
         series = _last_series[0]
         _last_series[0] = None
+        send_all = _last_sendall[0]
+        _last_sendall[0] = True
         if series is None:
             series = True
         out, done = [], False
@@ -114,7 +120,7 @@ def restyle(rows):
                       or any((b.url or "").endswith("start=premium") for b in r))
             if legacy:
                 if not done:
-                    out += _header(key, series)
+                    out += _header(key, series, send_all)
                     done = True
                 continue
             if any(c.startswith("next_") or c == "pages" for c in rc):
@@ -128,3 +134,19 @@ def restyle(rows):
         return out
     except Exception:
         return rows
+
+
+_TITLE_CUT = re.compile(r"\b(2160p|1440p|1080p|720p|576p|480p|360p|4k|bluray|blu-ray|web-?dl|webrip|hdrip|hdtc|hdcam|dvdrip|x264|x265|hevc|s\d{1,2}e?\d{0,3})\b", re.I)
+
+
+def file_caption(raw_name, size_text, brand_url):
+    """Minimal file caption (design B): title • quality • language • size [• S01E03]."""
+    name = (raw_name or "").strip()
+    short = _TITLE_CUT.split(name, maxsplit=1)[0]
+    short = re.sub(r"[._\-\[\]()]+", " ", short).strip() or re.sub(r"[._]+", " ", name)
+    short = short[:60].rstrip().upper()
+    tags = _tags(name)
+    if size_text:
+        tags.append("💾 " + ubold(size_text))
+    return (f"<blockquote><b>🎬 {ubold(html.escape(short))}</b>\n{' · '.join(tags)}</blockquote>\n\n"
+            f"⚜️ <b><a href=\"{brand_url}\">{ubold('Powered By ' + BRAND)}</a></b>")

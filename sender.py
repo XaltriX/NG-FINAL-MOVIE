@@ -21,7 +21,9 @@ import botcfg
 import verifylib
 from database.users_chats_db import db
 from deleter import schedule_delete
-from languages import tr, btn
+from languages import tr, btn, ubold
+import secrets
+import urllib.parse
 from info import UPDATE_CHNL_LNK
 
 logger = logging.getLogger(__name__)
@@ -73,6 +75,30 @@ async def gate(client, user_id, lang, pending=None):
     return False, policy, st
 
 
+_shares = db.db["shares"]
+
+
+async def share_link(client, user_id, file_id):
+    """Short code that remembers (file, referrer) -> https://t.me/<bot>?start=sh_<code>"""
+    d = await _shares.find_one_and_update(
+        {"ref": int(user_id), "file_id": file_id},
+        {"$setOnInsert": {"code": secrets.token_urlsafe(6), "at": __import__("datetime").datetime.utcnow()}},
+        upsert=True, return_document=True)
+    return f"https://t.me/{client.me.username}?start=sh_{d['code']}"
+
+
+async def file_markup(client, user_id, it, lang):
+    rows = [[B(ubold(tr("btn_updates", lang).split(" ", 1)[1]).join(("📌 ", "")), url=UPDATE_CHNL_LNK)]]
+    try:
+        link = await share_link(client, user_id, it.get("ref") or it["file_id"])
+        text = tr("share_text", lang, name=it.get("name") or "")
+        rows.append([B(ubold(tr("btn_share_file", lang).split(" ", 1)[1]).join(("📤 ", "")),
+                       url="https://t.me/share/url?url=" + urllib.parse.quote(link) + "&text=" + urllib.parse.quote(text))])
+    except Exception as e:
+        logger.debug(f"share link: {e}")
+    return M(rows)
+
+
 async def deliver(client, user_id, items, lang, policy):
     """
     items: [{"file_id", "caption", "cover"(optional), "legacy"(optional: caption is set after sending)}]
@@ -83,6 +109,7 @@ async def deliver(client, user_id, items, lang, policy):
     sent, delays, done_items = [], [], []
     for it in items:
         msg = None
+        markup = await file_markup(client, user_id, it, lang)
         for _ in range(3):
             try:
                 msg = await client.send_cached_media(
@@ -90,7 +117,7 @@ async def deliver(client, user_id, items, lang, policy):
                     file_id=it["file_id"],
                     caption=it.get("caption", ""),
                     protect_content=policy["protect"],
-                    reply_markup=M([[B('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]),
+                    reply_markup=markup,
                     cover=it.get("cover"),
                 )
                 break
@@ -107,7 +134,7 @@ async def deliver(client, user_id, items, lang, policy):
                 media = getattr(msg, msg.media.value)
                 await msg.edit_caption(
                     build_file_caption(media.file_name, media.file_size),
-                    reply_markup=M([[B('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]),
+                    reply_markup=markup,
                 )
             except Exception as e:
                 logger.debug(f"legacy caption failed: {e}")
@@ -139,13 +166,20 @@ async def deliver(client, user_id, items, lang, policy):
     except Exception as e:
         logger.debug(f"refer qualify: {e}")
 
-    # one notice per delivery (shortest time = the one the user must care about)
+    # ONE short notice per delivery:  📦 1/3 • ⏳ 15 min • 🗑 Auto-delete   (free)  |  ⏳ 15 min • 🗑 Auto-delete (premium/verified)
     first = min(range(len(sent)), key=lambda i: delays[i])
-    text = tr("del_notice", lang, time=fmt_duration(delays[first], lang))
+    dur = fmt_duration(delays[first], lang)
     rows = []
-    if policy["protect"]:
-        text += "\n\n" + tr("fwd_locked", lang)
-        rows = _upgrade_rows(lang)
+    if policy["free"]:
+        st2 = await db.get_download_status(user_id)
+        total = int(st2["daily_limit"])
+        used = min(total - int(st2["remaining"]), total)
+        text = tr("after_free", lang, used=used, total=total, time=dur)
+        if int(st2["remaining"]) <= 0:
+            text += "\n\n" + tr("limit_last", lang)
+            rows = _upgrade_rows(lang)
+    else:
+        text = tr("after_prem", lang, time=dur)
     notice = None
     try:
         notice = await client.send_message(user_id, text, reply_markup=M(rows) if rows else None,
@@ -160,10 +194,5 @@ async def deliver(client, user_id, items, lang, policy):
 
 
 async def send_remaining(client, user_id, lang, st, sent_count):
-    """'Files left today: x/y' (only for free users)."""
-    left = max(int(st["remaining"]) - int(sent_count), 0)
-    try:
-        await client.send_message(user_id, tr("remaining_txt", lang, left=left, total=st["daily_limit"]),
-                                  parse_mode=enums.ParseMode.HTML)
-    except Exception:
-        pass
+    """Kept for compatibility: the 'x/y' counter is now part of the single notice sent by deliver()."""
+    return
