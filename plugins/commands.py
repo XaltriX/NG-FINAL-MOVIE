@@ -23,6 +23,7 @@ from info import *
 from languages import LANG_PICK_TEXT, get_lang_raw, get_lang, tr
 import verifylib
 import payments
+import fsub_ui
 from premium_ui import send_premium_menu
 from sender import gate, deliver, send_remaining
 from languages.ui import lang_picker_markup, send_start
@@ -115,39 +116,13 @@ async def start(client, message):
     # Fetch file details concurrently with user checks
     file_details_task = asyncio.create_task(get_file_details(file_id))
 
-    if not await db.has_premium_access(message.from_user.id): 
+    if not await db.has_premium_access(message.from_user.id):
         try:
-            btn = []
-            chat = grp_id
-            settings      = await get_settings(chat)
-            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS + botcfg.get('fsub_channels'))) 
-
-            if fsub_channels:
-                btn += await is_subscribed(client, message.from_user.id, fsub_channels)
-            if AUTH_REQ_CHANNELS:
-                btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
-            if btn:
-                if len(message.command) > 1 and "_" in message.command[1]:
-                    kk, file_id = message.command[1].split("_", 1)
-                    btn.append([
-                        InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", callback_data=f"checksub#{kk}#{file_id}")
-                    ])
-                    reply_markup = InlineKeyboardMarkup(btn)
-                photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://i.ibb.co/cXrcfZPN/photo-2026-04-20-04-40-07-7630696664830836752.jpg"
-                caption = (
-                    f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\n\n"
-                    "❣️ ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.\n"
-                    "👉 ᴊᴏɪɴ ᴀʟʟ ᴛʜᴇ ʙᴇʟᴏᴡ ᴄʜᴀɴɴᴇʟs ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.\n"
-                    "⚠️पहले ʙᴀᴄᴋᴜᴘ ᴄʜᴀɴɴᴇʟ ज्वॉइन करो फिर वापस 🔙 आ कर ᴛʀʏ ᴀɢᴀɪɴ पर क्लिक करें।"
-                )
-                await message.reply_photo(
-                    photo=photo,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                    parse_mode=enums.ParseMode.HTML
-                )
+            async def _after_join():
+                message.command = ["start", data]
+                await start(client, message)
+            if await fsub_ui.prompt(client, message, data, grp_id, _after_join):
                 return
-
         except Exception as e:
             await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
             logger.error(f"❗️ Force Sub Error:\n\n{repr(e)}")

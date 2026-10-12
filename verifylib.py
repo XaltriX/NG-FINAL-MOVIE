@@ -98,6 +98,11 @@ async def finish_verification(client, message, token):
         return await message.reply_text(tr("verify_fast", lang), parse_mode=enums.ParseMode.HTML)
 
     until = await db.complete_verification(user_id, botcfg.get("verify_hours"))
+    try:
+        import stats
+        await stats.bump_verified(user_id, doc.get("sid"))
+    except Exception:
+        pass
     rows = []
     if doc.get("pending"):
         rows.append([B(btn("btn_get_file", lang), url=f"https://t.me/{client.me.username}?start={doc['pending']}")])

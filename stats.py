@@ -83,3 +83,25 @@ async def add_alias(alias, real):
 async def del_alias(alias):
     await alias_col.delete_one({"a": alias})
     await _load()
+
+
+# ---- verification counters (day = 12 AM -> 12 AM IST) ----
+vlog_col = db.db["verified_log"]
+
+
+async def bump_verified(user_id, sid=None):
+    day = _today()
+    try:
+        await stat_col.update_one({"id": "global"}, {"$inc": {
+            "verified": 1, f"vday.{day}": 1, f"vs.{sid}.total": 1, f"vs.{sid}.{day}": 1}}, upsert=True)
+        await vlog_col.update_one({"day": day, "uid": int(user_id)}, {"$inc": {"n": 1}}, upsert=True)
+    except Exception:
+        pass
+
+
+async def verified_stats():
+    d = await stat_col.find_one({"id": "global"}) or {}
+    day = _today()
+    uniq = await vlog_col.count_documents({"day": day})
+    per = {k: (v.get("total", 0), v.get(day, 0)) for k, v in (d.get("vs") or {}).items()}
+    return d.get("verified", 0), (d.get("vday") or {}).get(day, 0), uniq, per

@@ -5,6 +5,7 @@
 import time
 import asyncio
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, UserDeactivated, UserDeactivatedBan, PeerIdInvalid, ChatWriteForbidden, ChannelPrivate
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from database.users_chats_db import db
 from info import ADMINS
@@ -67,7 +68,7 @@ async def broadcast_cancel(bot, query):
         await query.message.edit("🛑 Trying to cancel groups broadcasting...")
 
 # ----------------- Send message helper (Optimized for Formatting, Pin & Spoiler) -----------------
-async def send_message(bot, chat_id, reply_msg, pin=False):
+async def send_message(bot, chat_id, reply_msg, pin=False, _try=0):
     try:
         # Basic copy arguments
         copy_args = {
@@ -103,15 +104,39 @@ async def send_message(bot, chat_id, reply_msg, pin=False):
                 pass
         return sent, "Success"
 
+    except FloodWait as e:
+        if _try < 5:
+            await asyncio.sleep(e.value + 1)
+            return await send_message(bot, chat_id, reply_msg, pin, _try + 1)
+        return None, "Error"
+    except (UserIsBlocked,):
+        return None, "Blocked"
+    except (InputUserDeactivated, UserDeactivated, UserDeactivatedBan, PeerIdInvalid, ChatWriteForbidden, ChannelPrivate):
+        return None, "Deleted"
     except Exception as e:
         err = str(e).lower()
-        if "blocked" in err or "user_is_blocked" in err:
+        if "blocked" in err:
             return None, "Blocked"
-        elif "chat not found" in err or "deleted" in err:
+        if "chat not found" in err or "deactivated" in err or "deleted" in err:
             return None, "Deleted"
-        else:
-            return None, "Error"
+        return None, "Error"
 
+
+_last_edit = {}
+
+
+async def safe_edit(msg, text, markup=None, force=False):
+    """Progress edits: at most one per 4 s, and never let an edit error stop the broadcast."""
+    now = time.time()
+    if not force and now - _last_edit.get(msg.id, 0) < 4:
+        return
+    _last_edit[msg.id] = now
+    try:
+        await msg.edit(text, reply_markup=markup)
+    except FloodWait:
+        pass
+    except Exception:
+        pass
 
 
 # ----------------- User Broadcast -----------------
@@ -156,7 +181,7 @@ async def broadcast_users(bot, message):
         sent_msg, result = await send_message(bot, int(user["id"]), b_msg, is_pin)
         await track_message(sent_msg, "user")
         if sent_msg:
-            user_broadcast_collection.insert_one({
+            await asyncio.to_thread(user_broadcast_collection.insert_one, {
                 "user_id": int(user["id"]),
                 "message_id": sent_msg.id,
                 "timestamp": datetime.now()
@@ -166,13 +191,14 @@ async def broadcast_users(bot, message):
         return result
 
     async with lock:
-        batch_size = 50
+        batch_size = 25
         for i in range(0, total_users, batch_size):
             if temp.B_USERS_CANCEL:
                 temp.B_USERS_CANCEL = False
                 cancelled = True
                 break
 
+            _tb = time.time()
             batch = users[i:i + batch_size]
             results = await asyncio.gather(*[send(user) for user in batch])
             for res in results:
@@ -183,7 +209,7 @@ async def broadcast_users(bot, message):
 
             done = i + len(batch)
             elapsed = get_readable_time(time.time() - start_time)
-            await status_msg.edit(
+            await safe_edit(status_msg,
                 f"📣 <b>Broadcast Progress:</b>\n\n"
                 f"👥 Total: <code>{total_users}</code>\n"
                 f"✅ Done: <code>{done}</code>\n"
@@ -192,9 +218,9 @@ async def broadcast_users(bot, message):
                 f"🗑️ Deleted: <code>{deleted}</code>\n"
                 f"❌ Failed: <code>{failed}</code>\n"
                 f"⏱️ Time: {elapsed}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#users")]])
+                markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#users")]])
             )
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(max(0.05, 1.0 - (time.time() - _tb)))
 
     elapsed = get_readable_time(time.time() - start_time)
     final_status = (
@@ -206,7 +232,7 @@ async def broadcast_users(bot, message):
         f"🗑️ Deleted: <code>{deleted}</code>\n"
         f"❌ Failed: <code>{failed}</code>\n\n"
     )
-    await status_msg.edit(final_status)
+    await safe_edit(status_msg, final_status, force=True)
 
 # ----------------- Delete all user broadcasts (Optimized & Non-Freezing) -----------------
 @Client.on_message(filters.command("del_broadcast") & filters.user(ADMINS))
@@ -293,7 +319,7 @@ async def broadcast_group(bot, message):
         sent_msg, result = await send_message(bot, int(chat["id"]), b_msg, is_pin)
         await track_message(sent_msg, "group")
         if sent_msg:
-            group_broadcast_collection.insert_one({
+            await asyncio.to_thread(group_broadcast_collection.insert_one, {
                 "group_id": int(chat["id"]),
                 "message_id": sent_msg.id,
                 "timestamp": datetime.now()
@@ -306,13 +332,14 @@ async def broadcast_group(bot, message):
     total_chats = len(all_chats)
 
     async with lock:
-        batch_size = 50
+        batch_size = 25
         for i in range(0, total_chats, batch_size):
             if temp.B_GROUPS_CANCEL:
                 temp.B_GROUPS_CANCEL = False
                 cancelled = True
                 break
 
+            _tb = time.time()
             batch = all_chats[i:i + batch_size]
             results = await asyncio.gather(*[send(chat) for chat in batch])
             for res in results:
@@ -321,16 +348,16 @@ async def broadcast_group(bot, message):
             done += len(batch)
 
             elapsed = get_readable_time(time.time() - start_time)
-            await status_msg.edit(
+            await safe_edit(status_msg,
                 f"📣 <b>Group broadcast progress:</b>\n\n"
                 f"👥 Total Groups: <code>{total_chats}</code>\n"
                 f"✅ Completed: <code>{done}</code>\n"
                 f"📬 Success: <code>{success}</code>\n"
                 f"❌ Failed: <code>{failed}</code>\n"
                 f"⏱️ Time: {elapsed}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#groups")]])
+                markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ CANCEL", callback_data="broadcast_cancel#groups")]])
             )
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(max(0.05, 1.0 - (time.time() - _tb)))
 
     elapsed = get_readable_time(time.time() - start_time)
     final_text = (
@@ -340,7 +367,7 @@ async def broadcast_group(bot, message):
         f"📬 Success: <code>{success}</code>\n"
         f"❌ Failed: <code>{failed}</code>\n\n"
     )
-    await status_msg.edit(final_text)
+    await safe_edit(status_msg, final_text, force=True)
 
 # ----------------- Delete all group broadcasts (Optimized & Non-Freezing) -----------------
 @Client.on_message(filters.command("del_grp_broadcast") & filters.user(ADMINS))

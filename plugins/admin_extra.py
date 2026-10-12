@@ -36,6 +36,9 @@ async def _stats():
             pass
     prem = await db.all_premium_users()
     total_dl, today_dl = await stats.downloads()
+    v_total, v_today, v_uniq, v_per = await stats.verified_stats()
+    names = {str(x.get('id')): x.get('site', '?') for x in botcfg.get('shorteners')}
+    per = ''.join(f"\n   ▫️ {names.get(k, k)}: {t} (today {d})" for k, (t, d) in v_per.items())
     pend = await payments.pending_count()
     counts = await db.count_users_by_lang()
     langs = " • ".join(f"{f} {counts.get(c, 0)}" for c, _, f in LANGS if counts.get(c, 0))
@@ -44,6 +47,7 @@ async def _stats():
         f"<b>👥 Users:</b> {users}\n<b>👨‍👩‍👧 Groups:</b> {groups}\n<b>🎬 Files:</b> {files}\n"
         f"<b>💎 Premium now:</b> {prem}\n<b>⏳ Pending payments:</b> {pend}\n\n"
         f"<b>📥 Downloads:</b> {total_dl}\n<b>📅 Today:</b> {today_dl}\n\n"
+        f"<b>✅ Verified today (12AM–12AM):</b> {v_today} ({v_uniq} users)\n<b>🏆 Verified lifetime:</b> {v_total}{per}\n\n"
         f"<b>🌐 Languages:</b> {langs or '—'}"
     )
     return text, M([[B("🔄 Refresh", callback_data="adx#stats"), B("🌐 Languages", callback_data="adm#lang")], BACK])

@@ -10,6 +10,7 @@ from info import DELETE_TIME, OWNER_UPI_ID, QR_CODE
 CFG_ID = -1   # document id in the bot_settings collection
 
 DEFAULTS = {
+    "gclean_sec": 120,                # group clean: delete every message older than this (per-group on/off with /gclean)
     "daily_limit": 3,                 # free files per 24h
     "delete_extra_min": 15,           # free/verified: file length + this many minutes
     "delete_extra_min_premium": 45,   # premium: file length + this many minutes

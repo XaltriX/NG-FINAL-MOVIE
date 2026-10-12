@@ -23,18 +23,38 @@ async def schedule_delete(chat_id, msg_ids, delay, notice_id=None, lang="en"):
 
 
 async def _run_due(client):
+    from pyrogram.errors import FloodWait
     now = datetime.datetime.utcnow()
-    async for d in db.pdel.find({"at": {"$lte": now}}).limit(100):
-        try:
-            await client.delete_messages(d["chat_id"], d["ids"])
-        except Exception as e:
-            logger.debug(f"delete failed: {e}")
+    bulk, ids_by_chat = [], {}
+    async for d in db.pdel.find({"at": {"$lte": now}}).limit(1500):
         if d.get("notice_id"):
+            try:
+                await client.delete_messages(d["chat_id"], d["ids"])
+            except FloodWait as e:
+                await asyncio.sleep(e.value + 1)
+                continue
+            except Exception as e:
+                logger.debug(f"delete failed: {e}")
             try:
                 await client.edit_message_text(d["chat_id"], d["notice_id"], tr("deleted_notice", d.get("lang", "en")))
             except Exception:
                 pass
-        await db.pdel.delete_one({"_id": d["_id"]})
+            await db.pdel.delete_one({"_id": d["_id"]})
+        else:
+            bulk.append(d["_id"])
+            ids_by_chat.setdefault(d["chat_id"], []).extend(d["ids"])
+    # plain deletions (group clean etc.): up to 100 ids per request
+    for chat_id, ids in ids_by_chat.items():
+        for i in range(0, len(ids), 100):
+            try:
+                await client.delete_messages(chat_id, ids[i:i + 100])
+            except FloodWait as e:
+                await asyncio.sleep(e.value + 1)
+            except Exception as e:
+                logger.debug(f"bulk delete failed: {e}")
+            await asyncio.sleep(0.3)
+    if bulk:
+        await db.pdel.delete_many({"_id": {"$in": bulk}})
 
 
 async def delete_loop(client):
@@ -43,4 +63,4 @@ async def delete_loop(client):
             await _run_due(client)
         except Exception as e:
             logger.error(f"delete loop error: {e}")
-        await asyncio.sleep(30)
+        await asyncio.sleep(10)
