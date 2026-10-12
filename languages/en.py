@@ -57,3 +57,5 @@ S.update({'nf_text': '<b>😕 NOT FOUND</b>\n<b>━━━━━━━━━━�
 S.update({'fs_card': '<b>🔐 JOIN & CONTINUE</b>\n<b>━━━━━━━━━━━━━━━</b>\n\n<b>👋 Hi {name}!</b>\n<b>Join the channels below. Your file will arrive automatically.</b>\n\n{rows}\n\n<b>📊 {n}/{total} joined</b>', 'fs_done': '<b>✅ All joined!</b>\n<b>📤 Sending your file…</b>', 'fs_btn_check': '✅ I have joined', 'fs_notyet': '⚠️ You have not joined all channels yet.', 'fs_req': 'send join request', 'fs_expired': '<b>⌛ Tap “I have joined” after joining all channels.</b>'})
 
 S.update({'after_free': '<b>📦 {used}/{total} • ⏳ {time} • 🗑 Auto-delete</b>', 'after_prem': '<b>⏳ {time} • 🗑 Auto-delete</b>', 'limit_last': "<b>🚫 Today's limit is over. Verify or go Premium to get more 👇</b>", 'share_text': '🎬 {name}\n\nGet this file free on Telegram 🍿', 'btn_share_file': '📤 Share', 'btn_updates': '📌 Join Updates', 'sendall_locked': '🔒 Send All is for Premium and Verified users.'})
+
+S.update({'tr_title': '🔥 TRENDING THIS WEEK', 'tr_sub': '📅 {a} – {b} • resets every Monday', 'tr_empty': '<b>No searches yet this week.</b>', 'tr_tap': '👇 Tap a name to search'})

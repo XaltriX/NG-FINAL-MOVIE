@@ -1,6 +1,8 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from info import DATABASE_URI
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
+import pytz
 
 class Database:
     def __init__(self, uri, db_name):
@@ -8,8 +10,37 @@ class Database:
         self.db = self.client[db_name]
         self.col = self.db.user
         self.config_col = self.db.configuration
+        self.weekly = self.db.weekly_searches
+
+    @staticmethod
+    def week_start():
+        """Monday 12:00 AM IST of the current week, as 'YYYY-MM-DD'."""
+        now = datetime.now(pytz.timezone("Asia/Kolkata"))
+        return (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+
+    async def _bump_weekly(self, message_text):
+        q = re.sub(r"\s+", " ", (message_text or "").lower()).strip()
+        if len(q) < 2 or len(q) > 60 or q.startswith("/"):
+            return
+        wk = self.week_start()
+        await self.weekly.update_one({"week": wk, "q": q}, {"$inc": {"count": 1}}, upsert=True)
+
+    async def get_weekly(self, limit=20):
+        """[(text, count)] for the current Monday->Sunday week; older weeks are cleared automatically."""
+        wk = self.week_start()
+        old = (datetime.strptime(wk, "%Y-%m-%d") - timedelta(days=14)).strftime("%Y-%m-%d")
+        try:
+            await self.weekly.delete_many({"week": {"$lt": old}})
+        except Exception:
+            pass
+        rows = await self.weekly.find({"week": wk}).sort("count", -1).limit(max(limit * 3, 60)).to_list(None)
+        return [(r["q"], r["count"]) for r in rows]
 
     async def update_top_messages(self, user_id, message_text):
+        try:
+            await self._bump_weekly(message_text)
+        except Exception:
+            pass
         user = await self.col.find_one({"user_id": user_id, "messages.text": message_text})
         
         if not user:
