@@ -76,7 +76,7 @@ async def active_job():
 
 
 async def start_job(bot, kind, status_msg, src_msg, pin, auto_del):
-    coll = db.users if kind == "users" else db.grp
+    coll = db.col if kind == "users" else db.grp
     total = await coll.count_documents({})
     doc = {"kind": kind, "src_chat": src_msg.chat.id, "src_id": src_msg.id, "pin": pin, "auto_del": int(auto_del),
            "last": None, "total": total, "done": 0, "success": 0, "blocked": 0, "deleted": 0, "failed": 0,
@@ -102,7 +102,7 @@ async def run_job(bot, job_id):
         if not j or j["status"] != "running":
             return
         kind = j["kind"]
-        coll = db.users if kind == "users" else db.grp
+        coll = db.col if kind == "users" else db.grp
         rec = user_rec if kind == "users" else group_rec
         key = "user_id" if kind == "users" else "group_id"
         cancel_attr = "B_USERS_CANCEL" if kind == "users" else "B_GROUPS_CANCEL"
