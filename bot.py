@@ -117,6 +117,8 @@ async def dreamxbotz_start():
     except Exception as e:
         logging.warning(f'pdel index: {e}')
     dreamxbotz.loop.create_task(delete_loop(dreamxbotz))
+    import bcast
+    dreamxbotz.loop.create_task(bcast.resume_broadcasts(dreamxbotz))
     dreamxbotz.username = '@' + me.username
     await payments.ensure_indexes()
     dreamxbotz.loop.create_task(payments.premium_loop(dreamxbotz))
