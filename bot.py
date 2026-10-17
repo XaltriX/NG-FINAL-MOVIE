@@ -110,7 +110,10 @@ async def dreamxbotz_start():
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     for media_cls in MEDIA_DBS:
-        await media_cls.ensure_indexes()
+        try:
+            await media_cls.ensure_indexes()
+        except Exception as e:      # e.g. Atlas cluster full (writes blocked): don't crash the bot because of an index
+            logging.warning(f'ensure_indexes skipped: {e}')
     if len(MEDIA_DBS) > 1:
         print(f"Multiple Database Mode On ({len(MEDIA_DBS)} DBs). Files will auto-switch to the next DB once the current one is full.")
     else:
