@@ -1,6 +1,7 @@
 """One-time, restart-safe copy of the bot's own data (NOT movie files) from DATABASE_URI -> BOT_DB_URI.
 Runs automatically at startup when BOT_DB_URI differs from DATABASE_URI. Safe to run again: it skips documents that
 already exist and only marks itself done when everything was copied."""
+import asyncio
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -11,7 +12,7 @@ from info import BOT_DB_URI, COLLECTION_NAME, DATABASE_NAME, DATABASE_URI
 log = logging.getLogger(__name__)
 DBS = (DATABASE_NAME, "admin_database", "broadcast_db")
 SKIP = {COLLECTION_NAME, "_migration"}
-CHUNK = 500
+CHUNK = 1000
 
 
 def needed():
@@ -48,14 +49,21 @@ async def run():
     if await flag.find_one({"_id": "v1"}):
         return
     log.warning("[MIGRATE] copying bot data to the dedicated database ...")
-    total = 0
+    jobs = []
     for dbname in DBS:
         for cn in await src[dbname].list_collection_names():
             if cn in SKIP or cn.startswith("system."):
                 continue
+            jobs.append((dbname, cn))
+    sem = asyncio.Semaphore(4)
+
+    async def one(dbname, cn):
+        async with sem:
             n = await _copy_collection(src[dbname][cn], dst[dbname][cn])
-            total += n
             log.warning(f"[MIGRATE] {dbname}.{cn}: {n} docs")
+            return n
+
+    total = sum(await asyncio.gather(*[one(d, c) for d, c in jobs]))
     await flag.insert_one({"_id": "v1", "docs": total})
     log.warning(f"[MIGRATE] done, {total} documents copied.")
 
