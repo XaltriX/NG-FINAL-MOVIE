@@ -547,5 +547,5 @@ class Database:
         r2 = await self.grp.update_many({'settings': {'$exists': False}}, {'$set': {'settings': default}})
         return r1.modified_count + r2.modified_count
 
-db = Database(DATABASE_URI, DATABASE_NAME)    
+db = Database(BOT_DB_URI, DATABASE_NAME)
 db2 = Database(DATABASE_URI2, DATABASE_NAME)

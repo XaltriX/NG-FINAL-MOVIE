@@ -63,8 +63,8 @@ auth_channels     = environ.get("AUTH_CHANNELS", "-1001980994910")# Channels for
 # ============================
 # Payment Configuration
 # ============================
-QR_CODE = environ.get('QR_CODE', 'https://files.catbox.moe/0z9fqt.jpg')    # QR code image for payments
-OWNER_UPI_ID = environ.get('OWNER_UPI_ID', 'kunaljaisinghpur@ybl')    # Owner UPI ID for payments
+QR_CODE = environ.get('QR_CODE', 'https://i.ibb.co/9HJ50rMT/photo-2025-12-28-12-28-36-7588884758772318224.jpg')    # QR code image for payments
+OWNER_UPI_ID = environ.get('OWNER_UPI_ID', 'kunaljaisinghpurt')    # Owner UPI ID for payments
 
 STAR_PREMIUM_PLANS = {
     10: "7day",
@@ -84,7 +84,7 @@ COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Telegraam_files') # Collection
 # If MULTIPLE_DB Is True Then Fill DATABASE_URI2 (and optionally URI3/4/5) Value Else You Will Get Error.
 MULTIPLE_DB = is_enabled(os.environ.get('MULTIPLE_DB', "True"), False) # Type True For Turn On MULTIPLE DB FUNTION 
 DATABASE_URI2 = environ.get('DATABASE_URI2', "mongodb+srv://Renamer:ZenitsuBot@cluster0.wxgxdz9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")  # MongoDB URI for the 2nd database (if MULTIPLE_DB is True)
-DATABASE_URI3 = environ.get('DATABASE_URI3', "mongodb+srv://rextenebris07_db_user:<7CqPTy6bIWyWte3x>@cluster0.nkq4smx.mongodb.net")  # MongoDB URI for the 3rd database (optional, MULTIPLE_DB True)
+DATABASE_URI3 = environ.get('DATABASE_URI3', "")  # MongoDB URI for the 3rd database (optional, MULTIPLE_DB True)
 DATABASE_URI4 = environ.get('DATABASE_URI4', "")  # MongoDB URI for the 4th database (optional, MULTIPLE_DB True)
 DATABASE_URI5 = environ.get('DATABASE_URI5', "")  # MongoDB URI for the 5th database (optional, MULTIPLE_DB True)
 
@@ -347,6 +347,14 @@ Bot_cmds = {
 
 
 #Don't Change Anything Here
+# ---- BOT DATA DATABASE ----------------------------------------------------------------------------
+# DATABASE_URI3 (or BOT_DB_URI) = dedicated database for the bot's own data (users, groups, settings, premium,
+# verify, stats ...). Movie files stay in DATABASE_URI / DATABASE_URI2. Old data is copied over automatically
+# on the first start (see migrate_db.py). Not set -> bot data stays in DATABASE_URI like before.
+BOT_DB_URI = environ.get('BOT_DB_URI', "") or DATABASE_URI3 or DATABASE_URI
+if BOT_DB_URI != DATABASE_URI:
+    DATABASE_URI3 = ""          # this cluster is NOT used for movie files
+# -----------------------------------------------------------------------------------------------------
 if MULTIPLE_DB == False:
     DATABASE_URI = DATABASE_URI
     DATABASE_URI2 = DATABASE_URI

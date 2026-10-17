@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from info import DATABASE_URI
+from info import BOT_DB_URI
 from datetime import datetime, timedelta
 import re
 import pytz
@@ -37,23 +37,16 @@ class Database:
         return [(r["q"], r["count"]) for r in rows]
 
     async def update_top_messages(self, user_id, message_text):
+        """Statistics only: must NEVER stop a search (e.g. when the Atlas cluster is full and writes are blocked)."""
         try:
             await self._bump_weekly(message_text)
+            user = await self.col.find_one({"user_id": user_id, "messages.text": message_text})
+            if not user:
+                await self.col.update_one({"user_id": user_id}, {"$push": {"messages": {"text": message_text, "count": 1}}}, upsert=True)
+            else:
+                await self.col.update_one({"user_id": user_id, "messages.text": message_text}, {"$inc": {"messages.$.count": 1}})
         except Exception:
             pass
-        user = await self.col.find_one({"user_id": user_id, "messages.text": message_text})
-        
-        if not user:
-            await self.col.update_one(
-                {"user_id": user_id},
-                {"$push": {"messages": {"text": message_text, "count": 1}}},
-                upsert=True
-            )
-        else:
-            await self.col.update_one(
-                {"user_id": user_id, "messages.text": message_text},
-                {"$inc": {"messages.$.count": 1}}
-            )
 
     async def get_top_messages(self, limit=30):
         pipeline = [
@@ -68,4 +61,4 @@ class Database:
     async def delete_all_messages(self):
         await self.col.delete_many({})
 
-mdb = Database(DATABASE_URI, "admin_database")
+mdb = Database(BOT_DB_URI, "admin_database")

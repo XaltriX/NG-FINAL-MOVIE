@@ -148,7 +148,10 @@ async def deliver(client, user_id, items, lang, policy):
         return sent
 
     if policy["free"]:
-        await db.increase_download(user_id, len(sent))
+        try:
+            await db.increase_download(user_id, len(sent))
+        except Exception as e:
+            logger.warning(f"increase_download failed (DB full?): {e}")
     try:
         import account
         for _it in done_items:

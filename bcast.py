@@ -14,7 +14,7 @@ from pyrogram.errors import (ChannelPrivate, ChatWriteForbidden, FloodWait, Inpu
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.users_chats_db import db
-from info import DATABASE_URI
+from info import BOT_DB_URI as DATABASE_URI
 from utils import get_readable_time, temp
 
 log = logging.getLogger(__name__)

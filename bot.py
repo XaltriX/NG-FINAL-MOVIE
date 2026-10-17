@@ -87,6 +87,11 @@ def dreamxbotz_plugins_handler(app, plugins_dir: str | Path = "plugins", package
 
 async def dreamxbotz_start():
     print('\n\nInitalizing DreamxBotz')
+    try:
+        import migrate_db
+        await migrate_db.run()
+    except Exception:
+        logging.exception('DB migration failed (will retry on next start)')
     await dreamxbotz.start()
     bot_info = await dreamxbotz.get_me()
     dreamxbotz.username = bot_info.username

@@ -13,7 +13,7 @@ from info import ADMINS
 from utils import temp, get_readable_time
 import pymongo
 from datetime import datetime
-from info import DATABASE_URI
+from info import BOT_DB_URI as DATABASE_URI
 
 lock = asyncio.Lock()
 

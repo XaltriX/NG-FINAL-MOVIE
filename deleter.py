@@ -13,13 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 async def schedule_delete(chat_id, msg_ids, delay, notice_id=None, lang="en"):
-    await db.pdel.insert_one({
-        "chat_id": int(chat_id),
-        "ids": [int(i) for i in msg_ids],
-        "at": datetime.datetime.utcnow() + datetime.timedelta(seconds=int(delay)),
-        "notice_id": int(notice_id) if notice_id else None,
-        "lang": lang,
-    })
+    try:
+        await db.pdel.insert_one({
+            "chat_id": int(chat_id),
+            "ids": [int(i) for i in msg_ids],
+            "at": datetime.datetime.utcnow() + datetime.timedelta(seconds=int(delay)),
+            "notice_id": int(notice_id) if notice_id else None,
+            "lang": lang,
+        })
+    except Exception as e:      # DB full / down: the file was already sent, don't break the flow
+        logger.warning(f"schedule_delete failed: {e}")
 
 
 async def _run_due(client):

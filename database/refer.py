@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from info import DATABASE_URI, DATABASE_NAME
+from info import BOT_DB_URI as DATABASE_URI, DATABASE_NAME
 import logging
 
 logger = logging.getLogger(__name__)
