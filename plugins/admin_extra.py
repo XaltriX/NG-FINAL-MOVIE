@@ -37,6 +37,14 @@ async def _stats():
     prem = await db.all_premium_users()
     total_dl, today_dl = await stats.downloads()
     v_total, v_today, v_uniq, v_per = await stats.verified_stats()
+    fs_lines = ""
+    try:
+        import fsub_ui
+        for _ch, (sh, jn, shd, jnd) in (await stats.fsub_stats()).items():
+            _t = fsub_ui._TITLES.get(int(_ch)) or _ch
+            fs_lines += f"\n   ▫️ {_t}: {jn}/{sh} joined ({(jn * 100 // sh) if sh else 0}%) • today {jnd}/{shd}"
+    except Exception:
+        pass
     names = {str(x.get('id')): x.get('site', '?') for x in botcfg.get('shorteners')}
     per = ''.join(f"\n   ▫️ {names.get(k, k)}: {t} (today {d})" for k, (t, d) in v_per.items())
     pend = await payments.pending_count()
@@ -48,6 +56,7 @@ async def _stats():
         f"<b>💎 Premium now:</b> {prem}\n<b>⏳ Pending payments:</b> {pend}\n\n"
         f"<b>📥 Downloads:</b> {total_dl}\n<b>📅 Today:</b> {today_dl}\n\n"
         f"<b>✅ Verified today (12AM–12AM):</b> {v_today} ({v_uniq} users)\n<b>🏆 Verified lifetime:</b> {v_total}{per}\n\n"
+        f"<b>📢 Force-sub (joined/shown):</b>{fs_lines or ' —'}\n\n"
         f"<b>🌐 Languages:</b> {langs or '—'}"
     )
     return text, M([[B("🔄 Refresh", callback_data="adx#stats"), B("🌐 Languages", callback_data="adm#lang")], BACK])

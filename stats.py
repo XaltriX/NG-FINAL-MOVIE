@@ -105,3 +105,22 @@ async def verified_stats():
     uniq = await vlog_col.count_documents({"day": day})
     per = {k: (v.get("total", 0), v.get(day, 0)) for k, v in (d.get("vs") or {}).items()}
     return d.get("verified", 0), (d.get("vday") or {}).get(day, 0), uniq, per
+
+
+# ---- force-sub funnel: how many users saw the card for a channel and how many joined ----
+async def bump_fsub(ch, kind):
+    """kind: 'shown' | 'joined'"""
+    day = _today()
+    try:
+        await stat_col.update_one({"id": "global"}, {"$inc": {f"fs.{ch}.{kind}": 1, f"fs.{ch}.{kind}_{day}": 1}}, upsert=True)
+    except Exception:
+        pass
+
+
+async def fsub_stats():
+    d = await stat_col.find_one({"id": "global"}) or {}
+    day = _today()
+    out = {}
+    for ch, v in (d.get("fs") or {}).items():
+        out[ch] = (v.get("shown", 0), v.get("joined", 0), v.get(f"shown_{day}", 0), v.get(f"joined_{day}", 0))
+    return out

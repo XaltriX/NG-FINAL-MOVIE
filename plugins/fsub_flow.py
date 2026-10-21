@@ -7,4 +7,6 @@ import fsub_ui
 async def fsx_cb(client, query):
     if query.data == "fsx#ok":
         return await query.answer("✅")
+    if query.data == "fsx#how":
+        return await fsub_ui.how(query)
     await fsub_ui.manual_check(client, query)

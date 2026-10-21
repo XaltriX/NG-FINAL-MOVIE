@@ -147,6 +147,9 @@ async def deliver(client, user_id, items, lang, policy):
     if not sent:
         return sent
 
+    if not policy["premium"]:
+        import fsub_ui
+        await fsub_ui.bump(user_id)          # next file needs one more channel
     if policy["free"]:
         try:
             await db.increase_download(user_id, len(sent))

@@ -133,7 +133,13 @@ async def start(client, message):
             async def _after_join():
                 message.command = ["start", data]
                 await start(client, message)
-            if await fsub_ui.prompt(client, message, data, grp_id, _after_join):
+            _fname = None
+            try:
+                _fd = await file_details_task
+                _fname = clean_filename(_fd[0].file_name) if _fd else None
+            except Exception:
+                pass
+            if await fsub_ui.prompt(client, message, data, grp_id, _after_join, file_name=_fname):
                 return
         except Exception as e:
             await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
