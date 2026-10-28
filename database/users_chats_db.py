@@ -268,16 +268,20 @@ class Database:
             return {"is_premium": True, "premium": False, "verified": True, "count": 0, "remaining": limit, "daily_limit": limit}
 
         # ---- Free user: resolve / reset the daily counter ----
+        # Resets every day at 12:00 AM IST (same day boundary as the stats). Works even if old data has no/odd dates.
+        today = self._today_ist()
         count = user_data.get("daily_download_count", 0) if user_data else 0
-        last_reset = user_data.get("last_download_reset") if user_data else None
-
-        if not last_reset or (now - last_reset) >= datetime.timedelta(hours=24):
+        if not user_data or user_data.get("dl_day") != today:
             count = 0
-            await self.users.update_one(
-                {"id": user_id},
-                {"$set": {"daily_download_count": 0, "last_download_reset": now}},
-                upsert=True
-            )
+            try:
+                await self.users.update_one(
+                    {"id": user_id},
+                    {"$set": {"daily_download_count": 0, "dl_day": today, "last_download_reset": now}},
+                    upsert=True
+                )
+            except Exception as e:      # DB full / down: still let the user download today's allowance
+                import logging
+                logging.getLogger(__name__).warning(f"daily reset write failed: {e}")
 
         remaining = limit - count
         remaining = remaining if remaining > 0 else 0
@@ -302,6 +306,7 @@ class Database:
             {"id": user_id},
             {
                 "$inc": {"daily_download_count": count},
+                "$set": {"dl_day": self._today_ist()},
                 "$setOnInsert": {"last_download_reset": datetime.datetime.now()}
             },
             upsert=True
