@@ -4,6 +4,9 @@ import datetime
 import pytz  
 from pymongo.errors import DuplicateKeyError
 
+_MEM_DL = {}     # user_id -> (day, count): fallback so the daily limit still works if the DB is full/read-only
+
+
 class Database:    
     def __init__(self, uri, database_name):
         self._client = motor.motor_asyncio.AsyncIOMotorClient(uri)
@@ -271,6 +274,10 @@ class Database:
         # Resets every day at 12:00 AM IST (same day boundary as the stats). Works even if old data has no/odd dates.
         today = self._today_ist()
         count = user_data.get("daily_download_count", 0) if user_data else 0
+        _m = _MEM_DL.get(user_id)
+        if _m and _m[0] != today:
+            _MEM_DL.pop(user_id, None)
+            _m = None
         if not user_data or user_data.get("dl_day") != today:
             count = 0
             try:
@@ -283,6 +290,8 @@ class Database:
                 import logging
                 logging.getLogger(__name__).warning(f"daily reset write failed: {e}")
 
+        if _m and _m[0] == today:
+            count = count + _m[1]
         remaining = limit - count
         remaining = remaining if remaining > 0 else 0
         return {"is_premium": False, "premium": False, "verified": False, "count": count, "remaining": remaining, "daily_limit": limit}
@@ -302,15 +311,23 @@ class Database:
         if count <= 0:
             return
 
-        await self.users.update_one(
-            {"id": user_id},
-            {
-                "$inc": {"daily_download_count": count},
-                "$set": {"dl_day": self._today_ist()},
-                "$setOnInsert": {"last_download_reset": datetime.datetime.now()}
-            },
-            upsert=True
-        )
+        try:
+            await self.users.update_one(
+                {"id": user_id},
+                {
+                    "$inc": {"daily_download_count": count},
+                    "$set": {"dl_day": self._today_ist()},
+                    "$setOnInsert": {"last_download_reset": datetime.datetime.now()}
+                },
+                upsert=True
+            )
+        except Exception:
+            # DB read-only (quota full): count in memory so the limit is still enforced
+            day = self._today_ist()
+            prev = _MEM_DL.get(user_id)
+            n = (prev[1] if prev and prev[0] == day else 0) + count
+            _MEM_DL[user_id] = (day, n)
+            raise
 
     async def remaining_downloads(self, user_id):
         """Returns remaining downloads left today for the user. Premium users get DAILY_DOWNLOAD_LIMIT (unlimited)."""

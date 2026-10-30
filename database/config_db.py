@@ -37,14 +37,10 @@ class Database:
         return [(r["q"], r["count"]) for r in rows]
 
     async def update_top_messages(self, user_id, message_text):
-        """Statistics only: must NEVER stop a search (e.g. when the Atlas cluster is full and writes are blocked)."""
+        """Statistics only: must NEVER stop a search. Only the small weekly counter is kept now
+        (the old all-time per-user history grew without limit and filled the Atlas cluster)."""
         try:
             await self._bump_weekly(message_text)
-            user = await self.col.find_one({"user_id": user_id, "messages.text": message_text})
-            if not user:
-                await self.col.update_one({"user_id": user_id}, {"$push": {"messages": {"text": message_text, "count": 1}}}, upsert=True)
-            else:
-                await self.col.update_one({"user_id": user_id, "messages.text": message_text}, {"$inc": {"messages.$.count": 1}})
         except Exception:
             pass
 
