@@ -25,13 +25,22 @@ BOT_TOKEN = environ.get('BOT_TOKEN', "")    # Bot token from @BotFather
 # ============================
 # Bot Settings Configuration
 # ============================
+CACHE_TIME = int(environ.get('CACHE_TIME', 120))    # Cache time in seconds (default: 5 minutes)
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))  # Use caption filter for search results (default: True)
+INDEX_CAPTION = bool(environ.get('SAVE_CAPTION', True)) # Save caption db when idexing make it False if you dont use USE_CAPTION_FILTER for search results (default: True)
+#Making it false will not save caption in db SO you can save some storage space
 COVERX = bool(environ.get('COVERX', True)) # Use cover image for indexed files (default: True)
+COVER_WATERMARK = bool(environ.get('COVER_WATERMARK', True)) # Watermark cover pe lagao (default: True)
+# If you disable it then bot will use a default thumb for all files
+
 
 
 PICS = (environ.get('PICS', 'https://graph.org/file/56b5deb73f3b132e2bb73.jpg https://graph.org/file/5303692652d91d52180c2.jpg https://graph.org/file/425b6f46efc7c6d64105f.jpg https://graph.org/file/876867e761c6c7a29855b.jpg')).split()  # Sample pic
+NOR_IMG = environ.get("NOR_IMG", "https://graph.org/file/e20b5fdaf217252964202.jpg")
 MELCOW_PHOTO = environ.get("MELCOW_PHOTO", "https://graph.org/file/56b5deb73f3b132e2bb73.jpg")
+SPELL_IMG = environ.get("SPELL_IMG", "https://graph.org/file/13702ae26fb05df52667c.jpg")
 SUBSCRIPTION = (environ.get('SUBSCRIPTION', 'https://graph.org/file/242b7f1b52743938d81f1.jpg'))
+FSUB_PICS = (environ.get('FSUB_PICS', 'https://i.ibb.co/cXrcfZPN/photo-2026-04-20-04-40-07-7630696664830836752.jpg https://i.ibb.co/spMZ83Cq/photo-2026-04-20-04-05-53-7630687855852912664.jpg https://i.ibb.co/cXrcfZPN/photo-2026-04-20-04-40-07-7630696664830836752.jpg')).split()  # Fsub pic
 
 # ============================
 # Admin, Channels & Users Configuration
@@ -94,6 +103,13 @@ TMDB_API_KEY = environ.get('TMDB_API_KEY', 'a02fd334c1aad2e413e6f57a0be2ef27') #
 TMDB_POSTER = bool(environ.get('TMDB_POSTER', "True")) # Shows TMDB poster in notification msg
 LANDSCAPE_POSTER = bool(environ.get('LANDSCAPE_POSTER', False)) # Shows landscape poster in notification msg
 
+MAX_LIST_ELM = environ.get("MAX_LIST_ELM", None)
+
+# Poster settings
+DREAMXBOTZ_IMAGE_FETCH = True
+TMDB_API_KEY = "a02fd334c1aad2e413e6f57a0be2ef27"
+
+POSTER_SPOILER= bool(environ.get('POSTER_SPOILER', True))  # On (True) / Off (False)
 
 # ============================
 # Admin log channel
@@ -108,6 +124,13 @@ OWNER_LNK = environ.get('OWNER_LNK', 'https://t.me/NeonGhost') # Owner link for 
 UPDATE_CHNL_LNK = environ.get('UPDATE_CHNL_LNK', 'https://t.me/+P_K9uiyMzxo5MDZl') # Update channel link for the bot
 
 # ============================
+# User Configuration
+# ============================
+auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '').split()]
+AUTH_USERS = (auth_users + ADMINS) if auth_users else []
+PREMIUM_USER = [int(user) if id_pattern.search(user) else user for user in environ.get('PREMIUM_USER', '').split()]
+
+# ============================
 # Daily Download Limit Configuration
 # ============================
 DAILY_DOWNLOAD_LIMIT = int(environ.get('DAILY_DOWNLOAD_LIMIT', '10'))  # Max files a FREE user can download every 24 hours. Premium users are unlimited.
@@ -120,7 +143,9 @@ PORT = environ.get("PORT", "8080")  # Port for the web server (default: 8080)
 MSG_ALRT = environ.get('MSG_ALRT', 'Share & Support Us ♥️') # Alert message for users
 DELETE_TIME = int(environ.get("DELETE_TIME", "120"))  #  deletion time in seconds (default: 5 minutes). Adjust as per your needs.
 CUSTOM_FILE_CAPTION = script.CAPTION   # ALWAYS from Script.py (env var / per-group caption ignored on purpose)
+BATCH_FILE_CAPTION = environ.get("BATCH_FILE_CAPTION", CUSTOM_FILE_CAPTION) # Custom caption for batch files
 IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", f"{script.IMDB_TEMPLATE_TXT}")     # Custom IMDB template 
+MAX_LIST_ELM = environ.get("MAX_LIST_ELM", None) # Maximum number of elements in a list (default: None, no limit)
 MAX_LIST_ELM = int(environ.get("MAX_LIST_ELM") or 5) or None # Maximum number of elements in a list (default: 10, set 0 for no limit)
 INDEX_REQ_CHANNEL = int(environ.get('INDEX_REQ_CHANNEL', LOG_CHANNEL))  # Index Request Channel ID (make sure bot is admin)
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", True))  # True if you want no results messages in Log Channel
@@ -224,13 +249,102 @@ else:
 # ============================
 # Other Settings
 # ============================
+SLEEP_THRESHOLD = int(environ.get('SLEEP_THRESHOLD', '60'))
+WORKERS = int(environ.get('WORKERS', '4'))
+SESSION_NAME = str(environ.get('SESSION_NAME', 'dreamXBotz'))
 PING_INTERVAL = int(environ.get("PING_INTERVAL", "1200"))  # 20 minutes
+
+
 
 
 # ============================
 # Reactions Configuration
 # ============================
 REACTIONS = ["🤝", "😇", "🤗", "😍", "👍", "🎅", "😐", "🥰", "🤩", "😱", "🤣", "😘", "👏", "😛", "😈", "🎉", "⚡️", "🫡", "🤓", "😎", "🏆", "🔥", "🤭", "🌚", "🆒", "👻", "😁"]
+
+# ============================================================
+# BOT COMMANDS👇
+# ============================================================
+# COMMANDS VISIBLE TO ALL USERS
+# ============================================================
+
+USER_COMMANDS = {
+
+    "start": "ᴛᴏ ᴜꜱᴇ ᴍʏ ꜰᴇᴀᴛᴜʀᴇꜱ.", 
+    "trendlist": "ɢᴇᴛ ᴛᴏᴘ ᴛʀᴇɴᴅɪɴɢ ꜱᴇᴀʀᴄʜ ʟɪꜱᴛ.",
+    "top_search": "ᴛᴏᴘ ꜱᴇᴀʀᴄʜᴇꜱ ᴏꜰ ᴛʜᴇ ᴅᴀʏ.",
+    "myplan": "ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ.",
+    "plan": "ᴠɪᴇᴡ ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴꜱ.",
+    "add_premium": "ᴀᴅᴅ ᴀɴʏ ᴜꜱᴇʀ ᴛᴏ ᴘʀᴇᴍɪᴜᴍ.",
+    "remove_premium": "ʀᴇᴍᴏᴠᴇ ᴀɴʏ ᴜꜱᴇʀ ꜰʀᴏᴍ ᴘʀᴇᴍɪᴜᴍ.",
+    "id": "ɢᴇᴛ ᴛᴇʟᴇɢʀᴀᴍ ɪᴅ.",
+    "info": "ɢᴇᴛ ᴜꜱᴇʀ ɪɴꜰᴏ.",
+    
+    "admin_cmd": "ꜱʜᴏᴡ ᴛʜɪꜱ ᴀᴅᴍɪɴ ᴄᴏᴍᴍᴀɴᴅꜱ ʟɪꜱᴛ.",
+    "group_cmd": "ɢʀᴏᴜᴘ ᴄᴏᴍᴍᴀɴᴅ ʟɪꜱᴛ.",
+    
+    "reload": "ʟɪɴᴋ / ʀᴇʟᴏᴀᴅ ᴛʜɪꜱ ɢʀᴏᴜᴘ ᴛᴏ ᴍᴀɴᴀɢᴇ ꜰʀᴏᴍ ᴘᴍ.",
+    "settings": "ᴄʜᴀɴɢᴇ ᴛʜᴇ ɢʀᴏᴜᴘ ꜱᴇᴛᴛɪɴɢꜱ ᴀꜱ ʏᴏᴜʀ ᴡɪꜱʜ.",
+    "details": "ᴄʜᴇᴄᴋ ʏᴏᴜʀ ꜱᴇᴛᴛɪɴɢꜱ.",
+    "set_template": "ꜱᴇᴛ ᴀ ᴄᴜꜱᴛᴏᴍ ɪᴍᴅʙ ᴛᴇᴍᴘʟᴀᴛᴇ.",
+    "set_fsub": "ꜱᴇᴛ ᴄᴜꜱᴛᴏᴍ ꜰᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.",
+    "remove_fsub": "ʀᴇᴍᴏᴠᴇ ᴄᴜꜱᴛᴏᴍ ꜰᴏʀᴄᴇ ꜱᴜʙ ᴄʜᴀɴɴᴇʟ.",
+}
+
+
+# ============================================================
+# COMMANDS VISIBLE ONLY TO BOT OWNER
+# ============================================================
+
+OWNER_COMMANDS = {
+
+    "admin": "ᴏᴘᴇɴ ᴀᴅᴍɪɴ ᴘᴀɴᴇʟ (ᴀʟʟ ᴛᴏɢɢʟᴇꜱ).",
+    "stats": "ɢᴇᴛ ᴛʜᴇ ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ ᴀɴᴅ ᴄʜᴀᴛꜱ.",
+    "logs": "ɢᴇᴛ ᴛʜᴇ ʀᴇᴄᴇɴᴛ ᴇʀʀᴏʀꜱ. 📜",
+    "send": "ꜱᴇɴᴅ ᴍᴇꜱꜱᴀɢᴇ ᴛᴏ ᴀ ᴘᴀʀᴛɪᴄᴜʟᴀʀ ᴜꜱᴇʀ.",
+    "users": "ɢᴇᴛ ʟɪꜱᴛ ᴏꜰ ᴍʏ ᴜꜱᴇʀꜱ ᴀɴᴅ ɪᴅꜱ.",
+    "chats": "ɢᴇᴛ ʟɪꜱᴛ ᴏꜰ ᴍʏ ᴄʜᴀᴛꜱ ᴀɴᴅ ɪᴅꜱ.",
+    "leave": "ʟᴇᴀᴠᴇ ꜰʀᴏᴍ ᴀ ᴄʜᴀᴛ.",
+    "invite": "ɢᴇᴛ ᴀɴ ɪɴᴠɪᴛᴇ ʟɪɴᴋ ꜰᴏʀ ᴀ ᴄʜᴀᴛ.",
+    "delreq": "ᴅᴇʟᴇᴛᴇ ᴀʟʟ ᴘᴇɴᴅɪɴɢ ᴊᴏɪɴ ʀᴇǫᴜᴇꜱᴛꜱ.",
+    "disable": "ᴅɪꜱᴀʙʟᴇ ᴀ ᴄʜᴀᴛ.",
+    "enable": "ʀᴇ-ᴇɴᴀʙʟᴇ ᴀ ᴘʀᴇᴠɪᴏᴜꜱʟʏ ᴅɪꜱᴀʙʟᴇᴅ ᴄʜᴀᴛ.",
+    "ban": "ʙᴀɴ ᴀ ᴜꜱᴇʀ.",
+    "unban": "ᴜɴʙᴀɴ ᴀ ᴜꜱᴇʀ.",
+    "reset_group": "ʀᴇꜱᴇᴛ ʏᴏᴜʀ ꜱᴇᴛᴛɪɴɢꜱ.",
+    "resetallgroup": "ʀᴇꜱᴇᴛ ꜱᴇᴛᴛɪɴɢꜱ ꜰᴏʀ ᴀʟʟ ᴄᴏɴɴᴇᴄᴛᴇᴅ ɢʀᴏᴜᴘꜱ.",
+    
+    "broadcast": "ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴀ ᴍᴇꜱꜱᴀɢᴇ ᴛᴏ ᴀʟʟ ᴜꜱᴇʀꜱ.",
+    "grp_broadcast": "ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴀ ᴍᴇꜱꜱᴀɢᴇ ᴛᴏ ᴀʟʟ ᴄᴏɴɴᴇᴄᴛᴇᴅ ɢʀᴏᴜᴘꜱ.",
+    "del_broadcast": "ᴅᴇʟᴇᴛᴇ ᴀʟʟ ᴘʀᴇᴠɪᴏᴜꜱ ᴜꜱᴇʀ ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴍᴇꜱꜱᴀɢᴇꜱ.",
+    "del_grp_broadcast": "ᴅᴇʟᴇᴛᴇ ᴀʟʟ ᴘʀᴇᴠɪᴏᴜꜱ ɢʀᴏᴜᴘ ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴍᴇꜱꜱᴀɢᴇꜱ.",
+    
+    "setskip": "ꜱᴇᴛ ꜰɪʟᴇ ɪɴᴅᴇxɪɴɢ ꜱᴋɪᴘ ɴᴜᴍʙᴇʀ.",
+    "cleandb": "ᴄʟᴇᴀɴ ᴜɴɴᴇᴄᴇꜱꜱᴀʀʏ ꜰɪᴇʟᴅꜱ ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀꜱᴇ.",
+    "delete": "ᴅᴇʟᴇᴛᴇ ᴀ ꜱᴘᴇᴄɪꜰɪᴄ ꜰɪʟᴇ ꜰʀᴏᴍ ᴅʙ.",
+    "deletefiles": "ᴅᴇʟᴇᴛᴇ ᴄᴀᴍʀɪᴘ ᴀɴᴅ ᴘʀᴇᴅᴠᴅ ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴛʜᴇ ʙᴏᴛ'ꜱ ᴅᴀᴛᴀʙᴀꜱᴇ.",
+    "del_msg": "ʀᴇᴍᴏᴠᴇ ꜰɪʟᴇ ɴᴀᴍᴇ ᴄᴏʟʟᴇᴄᴛɪᴏɴ ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ...",
+    
+    "movie_update": "ᴏɴ / ᴏꜰꜰ ᴀᴄᴄᴏʀᴅɪɴɢ ʏᴏᴜʀ ɴᴇᴇᴅᴇᴅ...",
+    "pm_search": "ᴘᴍ ꜱᴇᴀʀᴄʜ ᴏɴ / ᴏꜰꜰ ᴀᴄᴄᴏʀᴅɪɴɢ ʏᴏᴜʀ ɴᴇᴇᴅᴇᴅ...",
+    
+    "premium_users": "ɢᴇᴛ ʟɪꜱᴛ ᴏꜰ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀꜱ.",
+    "get_premium": "ɢᴇᴛ ɪɴꜰᴏ ᴏꜰ ᴀɴʏ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ.",
+    "trial_reset": "ʀᴇꜱᴇᴛ ꜰʀᴇᴇ ᴛʀɪᴀʟ ꜰᴏʀ ᴀ ᴜꜱᴇʀ (ᴏʀ ᴀʟʟ).",
+    
+
+    "restart": "ʀᴇꜱᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ. 🔁",
+} 
+
+# ============================================================
+# COMPLETE COMMAND LIST
+# ============================================================
+
+Bot_cmds = {
+    **USER_COMMANDS,
+    **OWNER_COMMANDS,
+}
+
 
 #Don't Change Anything Here
 # ---- BOT DATA DATABASE ----------------------------------------------------------------------------
