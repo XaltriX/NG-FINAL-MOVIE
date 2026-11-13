@@ -178,7 +178,7 @@ async def _check(client, message):
         if not u or u.is_bot or u.id == 777000 or message.sender_chat or message.service:
             return False
         cid = message.chat.id
-        if not (message.text or message.caption) or not await is_on(cid):
+        if not botcfg.get("spam_on") or not (message.text or message.caption) or not await is_on(cid):
             return False
         link = await _find_spam(client, message)
         if not link or await _is_admin(client, cid, u.id):

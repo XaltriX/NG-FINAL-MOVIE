@@ -5,7 +5,7 @@ seconds are merged into ONE card). The card is never auto-deleted by /gclean."""
 import asyncio
 import html
 import logging
-import random
+import time
 
 from pyrogram import Client, enums, filters
 from pyrogram.errors import FloodWait, MessageNotModified
@@ -86,6 +86,18 @@ async def welcome_cmd(client, message):
         return
     cid = message.chat.id
     arg = message.command[1].lower() if len(message.command) > 1 else ""
+    if arg == "test":                                   # shows the card now, for the admin who asked
+        tok = NOCLEAN.set(True)
+        try:
+            await client.send_message(cid, card_text(client, {message.from_user.id: message.from_user.first_name},
+                                                     message.chat.title or ""), reply_markup=card_kb(client),
+                                      parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        except Exception as e:
+            await message.reply_text(f"❌ Could not send the card: <code>{html.escape(str(e))[:200]}</code>",
+                                     parse_mode=enums.ParseMode.HTML)
+        finally:
+            NOCLEAN.reset(tok)
+        return message.stop_propagation()
     if arg in ("on", "off"):
         _on[cid] = arg == "on"
         try:
@@ -93,26 +105,56 @@ async def welcome_cmd(client, message):
         except Exception:
             pass
     st = "🟢 ON" if await is_on(cid) else "🔴 OFF"
-    await message.reply_text(f"<b>👋 Welcome card: {st}</b>\nChange: <code>/welcome on</code> or <code>/welcome off</code>",
+    await message.reply_text(f"<b>👋 Welcome card: {st}</b>\nChange: <code>/welcome on</code> / <code>/welcome off</code> · try: <code>/welcome test</code>",
                              parse_mode=enums.ParseMode.HTML)
     message.stop_propagation()
 
 
 # ---------------------------------------------------------------- sending
+_seen = {}                          # (chat, user) -> time: the same join can arrive as service message AND member update
+
+
+async def _enqueue(client, chat, members):
+    cid = chat.id
+    now = time.time()
+    if len(_seen) > 5000:
+        _seen.clear()
+    users = []
+    for u in members:
+        if u.is_bot or u.id == client.me.id or now - _seen.get((cid, u.id), 0) < 120:
+            continue
+        _seen[(cid, u.id)] = now
+        users.append(u)
+    if not users or not botcfg.get("welcome_on") or not await is_on(cid):
+        return
+    q = _q.setdefault(cid, {"users": {}, "task": None})
+    for u in users:
+        q["users"][u.id] = u.first_name or "User"
+    if not q["task"] or q["task"].done():
+        q["task"] = asyncio.create_task(_flush(client, cid, chat.title or ""))
+
+
 @Client.on_message(filters.group & filters.new_chat_members, group=-4)
 async def on_join(client, message):
     try:
-        cid = message.chat.id
-        users = [u for u in message.new_chat_members if not u.is_bot and u.id != client.me.id]
-        if not users or not await is_on(cid):
-            return
-        q = _q.setdefault(cid, {"users": {}, "task": None})
-        for u in users:
-            q["users"][u.id] = u.first_name or "User"
-        if not q["task"] or q["task"].done():
-            q["task"] = asyncio.create_task(_flush(client, cid, message.chat.title or ""))
+        await _enqueue(client, message.chat, message.new_chat_members)
     except Exception:
         log.exception("welcome join")
+
+
+@Client.on_chat_member_updated(filters.group, group=-4)
+async def on_member_update(client, upd):
+    """Big groups send no 'X joined' service message; admin bots get this update instead."""
+    try:
+        new, old = upd.new_chat_member, upd.old_chat_member
+        if not new or new.status != enums.ChatMemberStatus.MEMBER:
+            return
+        if old and old.status in (enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR,
+                                  enums.ChatMemberStatus.OWNER):
+            return
+        await _enqueue(client, upd.chat, [new.user])
+    except Exception:
+        log.exception("welcome member update")
 
 
 async def _flush(client, cid, title):
@@ -167,12 +209,14 @@ def _panel():
     for i, b in enumerate(bs, 2):
         t += f"<b>{i}.</b> {DOTS.get(b.get('c'), '')} {html.escape(b['t'])}\n<code>{html.escape(b['u'])}</code>\n"
     t += "\n<i>🎨 colour  ✏️ edit  ⬆️ up  🗑 delete</i>"
+    t += f"\n\n👋 <b>Welcome card:</b> {'🟢 ON' if botcfg.get('welcome_on') else '🔴 OFF'}   🛡 <b>Link anti-spam:</b> {'🟢 ON' if botcfg.get('spam_on') else '🔴 OFF'}"
     rows = [[B(f"🎨 {i}", callback_data=f"wl#col#{i - 2}"), B(f"✏️ {i}", callback_data=f"wl#ed#{i - 2}"),
              B(f"⬆️ {i}", callback_data=f"wl#up#{i - 2}"), B(f"🗑 {i}", callback_data=f"wl#del#{i - 2}")]
             for i in range(2, len(bs) + 2)]
     rows.append(([B("➕ Add button", callback_data="wl#add")] if len(bs) < MAX_BTNS else [])
                 + [B("👁 Preview", callback_data="wl#prev")])
-    rows.append([B("♻️ Reset", callback_data="wl#reset"), B("❌ Close", callback_data="wl#close")])
+    rows.append([B("👋 Welcome ON/OFF", callback_data="wl#tw"), B("🛡 Anti-spam ON/OFF", callback_data="wl#ts")])
+    rows.append([B("♻️ Reset", callback_data="wl#reset"), B("⬅️ Back", callback_data="adm#home")])
     return t, M(rows)
 
 
@@ -228,6 +272,10 @@ async def wl_cb(client, q):
     elif act == "del" and 0 <= i < len(bs):
         bs.pop(i)
         await botcfg.set("welcome_btns", bs)
+    elif act == "tw":
+        await botcfg.set("welcome_on", not botcfg.get("welcome_on"))
+    elif act == "ts":
+        await botcfg.set("spam_on", not botcfg.get("spam_on"))
     elif act == "reset":
         await botcfg.set("welcome_btns", botcfg.DEFAULTS["welcome_btns"])
     elif act == "prev":
