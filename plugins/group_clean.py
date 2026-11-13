@@ -1,6 +1,7 @@
 """Group cleanup: commands sent to this bot in a group (e.g. /trendlist@MyBot) are deleted after a few seconds.
 Needs the bot to be admin with 'Delete messages' in that group. Settings: /admin -> Settings -> Limits."""
 import asyncio
+import contextvars
 import time
 
 from pyrogram import Client, enums, filters
@@ -32,6 +33,7 @@ async def clean_commands(client, message):
 
 # ---------------- Group clean: delete EVERY message older than N seconds (default 2 min) ----------------
 # Per-group on/off:  /gclean  (group admin).  Bot must be admin with "Delete messages".
+NOCLEAN = contextvars.ContextVar("noclean", default=False)   # set True around a send that must NOT be auto-deleted
 _col = db.db["gclean"]
 _cache = {}                       # chat_id -> (on, fetched_at)
 GROUPS = (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
@@ -76,7 +78,7 @@ def _wrap(name):
         r = await orig(self, *a, **k)
         try:
             for m in (r if isinstance(r, list) else [r]):
-                if getattr(m, "chat", None) and m.chat.type in GROUPS:
+                if getattr(m, "chat", None) and m.chat.type in GROUPS and not NOCLEAN.get():
                     asyncio.create_task(track(m.chat.id, m.id))
         except Exception:
             pass

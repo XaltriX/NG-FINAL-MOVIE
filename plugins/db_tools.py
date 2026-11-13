@@ -6,17 +6,18 @@ from info import ADMINS
 
 @Client.on_message(filters.command("cleanup_old_db") & filters.user(ADMINS))
 async def cleanup_old_db(client, message):
-    """After the data was copied to the dedicated DB: delete the old copies from the full cluster."""
-    if not migrate_db.needed():
-        return await message.reply("ℹ️ No dedicated bot database is configured (set DATABASE_URI3).")
-    if len(message.command) < 2 or message.command[1] != "confirm":
-        return await message.reply("⚠️ This deletes the OLD copy of users/settings/etc from the first database "
-                                   "(the bot already uses the new one). Movie files are not touched.\n\n"
-                                   "Send <code>/cleanup_old_db confirm</code> to continue.")
-    done = await migrate_db.cleanup_old()
+    """After the data was copied to the dedicated DB: delete the OLD copies (shows the list first)."""
+    if not migrate_db.needed() and BOT_DB_URI == DATABASE_URI:
+        return await message.reply("ℹ️ No separate bot database is configured (set BOT_DB_URI).")
+    confirm = len(message.command) > 1 and message.command[1] == "confirm"
+    done = await migrate_db.cleanup_old(dry=not confirm)
     if done is None:
         return await message.reply("❌ Migration is not finished yet. Restart the bot once and try again.")
-    await message.reply(f"✅ Freed space: dropped {len(done)} old collections.")
+    names = "\n".join(f"• <code>{n}</code>" for n in done[:40]) or "<i>nothing to delete</i>"
+    if not confirm:
+        return await message.reply(f"⚠️ <b>These OLD copies will be deleted</b> (the bot already uses the new DB; "
+                                   f"movie files are not touched):\n{names}\n\nSend <code>/cleanup_old_db confirm</code>")
+    await message.reply(f"✅ Freed space: dropped {len(done)} old collections.\n{names}")
 
 
 # ---------------- database size tools (admin) ----------------
@@ -24,7 +25,7 @@ import re
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from info import BOT_DB_URI, DATABASE_NAME, DATABASE_URI, DATABASE_URI2
+from info import BOT_DB_OLD_URI, BOT_DB_URI, DATABASE_NAME, DATABASE_URI, DATABASE_URI2, DATABASE_URIS
 
 PROTECTED = {"users", "uersz", "groups", "bot_settings", "premium", "referrals", "refers", "referusers", "requests"}
 BOT_DBS = (DATABASE_NAME, "admin_database", "broadcast_db")
@@ -104,3 +105,65 @@ async def dbclean(client, message):
     except Exception:
         pass
     await message.reply("🧹 Cleaned:\n" + "\n".join(f"• {d}" for d in done) + "\n\nNow run /dbstats to see what is still big.")
+
+
+# ---------------- /dbs : every connected cluster, space used / free ----------------
+import asyncio
+import os
+
+QUOTA = int(os.environ.get("DB_QUOTA_MB", 512))
+_SYS = {"admin", "local", "config"}
+
+
+def _host(uri):
+    m = re.search(r"@([^/?]+)", uri or "")
+    return (m.group(1).split(".")[0] + "…") if m else "?"
+
+
+async def _cluster_all(uri):
+    cl = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=8000)
+    try:
+        names = [n for n in await cl.list_database_names() if n not in _SYS]
+    except Exception:
+        names = list(dict.fromkeys(BOT_DBS))
+    rows, total = [], 0
+    for n in names:
+        try:
+            st = await cl[n].command("dbstats")
+        except Exception:
+            continue
+        sz = st.get("storageSize", 0) + st.get("indexSize", 0)
+        total += sz
+        rows.append((n, sz))
+    return total, sorted(rows, key=lambda r: -r[1])
+
+
+@Client.on_message(filters.command("dbs") & filters.user(ADMINS))
+async def dbs_cmd(client, message):
+    """All connected databases at a glance: used / free MB and the biggest databases inside each."""
+    m = await message.reply("⏳ Checking all databases...")
+    labels = {}
+    def add(uri, label):
+        if uri:
+            labels[uri] = f"{labels[uri]} + {label}" if uri in labels else label
+    add(BOT_DB_URI, "🤖 Bot-data")
+    for i, u in enumerate(DATABASE_URIS, 1):
+        add(u, f"📁 Files {i}")
+    if BOT_DB_OLD_URI not in labels:
+        add(BOT_DB_OLD_URI, "🗃 Old / shared")
+    items = list(labels.items())
+    res = await asyncio.gather(*[_cluster_all(u) for u, _ in items], return_exceptions=True)
+    out = f"<b>🗄 DATABASES</b>  ({len(items)} clusters, {QUOTA} MB each)\n"
+    for (uri, label), r in zip(items, res):
+        out += f"\n<b>{label}</b> · <code>{_host(uri)}</code>\n"
+        if isinstance(r, Exception):
+            out += "❌ not reachable\n"
+            continue
+        total, rows = r
+        used = total / 1048576
+        pct = min(used / QUOTA, 1)
+        dot = "🔴" if pct > .85 else "🟡" if pct > .65 else "🟢"
+        out += f"{dot} {'▰' * round(pct * 10)}{'▱' * (10 - round(pct * 10))} <b>{used:.0f}</b> / {QUOTA} MB ({pct * 100:.0f}%) · free <b>{max(QUOTA - used, 0):.0f} MB</b>\n"
+        for j, (n, sz) in enumerate(rows[:5]):
+            out += f"{'└' if j == min(len(rows), 5) - 1 else '├'} <code>{n}</code> {_mb(sz)}\n"
+    await m.edit_text(out + "\n<i>Details: /dbstats  ·  free space: /dbclean</i>")

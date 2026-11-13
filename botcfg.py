@@ -40,6 +40,9 @@ DEFAULTS = {
     "refer_on": True,
     "refer_need": 2,                  # qualified friends needed for one reward
     "refer_days": 1,                  # premium days per reward
+    "welcome_btns": [{"t": "Join Channel", "u": "https://t.me/NeonGhost_Network", "c": "blue"}],  # extra welcome-card buttons (/welcomebtn)
+    "spam_strikes": 3,                # link spam: warnings before mute (the Nth link = mute)
+    "spam_mute_min": 60,              # link spam: mute length in minutes
 }
 
 _cfg = {}

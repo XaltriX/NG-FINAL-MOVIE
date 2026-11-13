@@ -46,34 +46,7 @@ async def save_group(bot, message):
             await db.connect_group(message.chat.id, message.from_user.id)
         except Exception as e:
             logging.error(f"DB error connecting group: {e}")
-    else:
-        settings = await get_settings(message.chat.id)
-
-        if settings.get("welcome"):
-            for u in message.new_chat_members:
-                if temp.MELCOW.get('welcome'):
-                    try:
-                        await temp.MELCOW['welcome'].delete()
-                    except:
-                        pass
-                try:
-                    temp.MELCOW['welcome'] = await message.reply_photo(
-                        photo=MELCOW_PHOTO,
-                        caption=script.MELCOW_ENG.format(u.mention, message.chat.title),
-                        reply_markup=InlineKeyboardMarkup([
-                                [
-                                    InlineKeyboardButton("📌 ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ 📌", url=OWNER_LNK)
-                                ]]),parse_mode=enums.ParseMode.HTML)
-                except Exception as e:
-                    print(f"Welcome photo send failed: {e}")
-        if settings.get("auto_delete"):
-            await asyncio.sleep(600)
-            try:
-                if temp.MELCOW.get('welcome'):
-                    await temp.MELCOW['welcome'].delete()
-                    temp.MELCOW['welcome'] = None 
-            except:
-                pass
+    # member welcome card now lives in plugins/welcome.py
 
 @Client.on_message(filters.command('leave') & filters.user(ADMINS))
 async def leave_a_chat(bot, message):
