@@ -37,7 +37,7 @@ from datetime import datetime, timedelta
 lock = asyncio.Lock()
 
 # callbacks owned by other plugins: this catch-all handler must not touch / answer them
-EXTERNAL_CB_PREFIXES = ("gcl#", "fsx#", "episodes#", "fe#", "adm#", "adc#", "adp#", "adx#", "pr#", "rq#", "acc#", "vf#", "setlang#", "lang_menu", "wl#")
+EXTERNAL_CB_PREFIXES = ("gcl#", "fsx#", "episodes#", "fe#", "adm#", "adc#", "adp#", "adx#", "pr#", "rq#", "acc#", "vf#", "setlang#", "lang_menu", "wl#", "sp#")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
